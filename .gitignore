@@ -5,3 +5,7 @@ coverage/
 *.log
 .DS_Store
 .spikes/
+
+# Rust (M0.5+)
+target/
+**/*.rs.bk

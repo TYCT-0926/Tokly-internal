@@ -1,51 +1,29 @@
-# Tokly
+# Tokly 内部仓库（tokly-internal）
 
-Local-first, open-source AI token usage analytics.
+Tokly 的战略与设计文档仓，**私有，不放代码**。代码与公共文档子集在公开仓 [Tokly](https://github.com/TYCT-0926/Tokly)（本地 `E:/Axiom/Tokly-public`）。
 
-One local dataset, three ways to open it: **Web Dashboard** (the main interface) · **TUI** (live terminal monitoring) · **Desktop** (system tray + pinnable widget + full window).
+Tokly：本地优先、开源（MIT）的 AI token 使用统计与可视化——六源 → 归一化 → SQLite 永久仓库 → Web/TUI/桌面三端。
 
-Covers token consumption, cost, sessions, and tool calls across AI coding tools: Claude Code, Codex CLI, OpenCode, Gemini CLI, Copilot, Cursor.
+## 内容地图
 
-## Product principles
+| 路径 | 内容 |
+|---|---|
+| `docs/adr/` | 架构决策记录（战略取舍，含竞品判断；只追加不修改） |
+| `docs/research/` | 竞品调研与外部审查报告（档案，冻结打戳） |
+| `docs/design/` | 设计图纸：令牌系统 / 主题 / 组件规格（照此施工，不得即兴） |
+| `docs/架构总览.md` | 一页看懂系统：形态、数据流、包职责、进程模型、架构约束 |
+| `docs/数据库-schema.md` | 规范 DDL（M0.5 冻结门交付物） |
+| `docs/路线图.md` | 里程碑、优先级、性能 SLO |
+| `docs/风险登记.md` | 风险台账与对冲措施 |
+| `docs/仓库策略.md` | 开源/闭源边界与双仓同步规则（本内容地图的依据） |
+| `docs/文档规范.md` | 文档元规范：SSOT、分寿命、时效打戳（公共子集，公开仓同步） |
 
-1. **Read-only, zero intrusion** — Tokly never modifies any tool's config, proxy, or environment variables. It only parses local data read-only; official APIs require explicit user authorization.
-2. **Local warehouse, immune to history loss** — full import on first run, incremental ingestion afterwards, retained forever. Source tools cleaning their logs (Claude deletes after 30 days by default) does not affect Tokly's data.
-3. **Provenance labels** — every number is labeled by origin: `native` (cost reported by the source tool) / `computed` (calculated from pricing tables) / `estimated` (approximation). No fake precision.
-4. **One core, three frontends** — a normalized data model + local SQLite as the single source of truth; Web/TUI/Desktop are all views onto it.
-5. **Performance by architecture, not rescanning** — watermark-based incremental ingestion; no ccusage-style full rescans on every run.
-6. **Design is an engineering goal** — one set of design tokens feeds all three renderers: restrained, precise, no AI-flavored visuals (see `docs/设计原则.md`).
+数据源格式 spec（`docs/sources/`）、设计原则、开发流程、git 规范、代码风格已迁至公开仓 `docs/`，本仓不复制；引用一律写"公开仓 docs/xxx"。
 
-## Repository structure
+## 边界规则（一句话）
 
-> **Status: docs-only.** The code is being rewritten according to these documents — `apps/` and `packages/` below describe the target layout and do not exist yet.
+内部子集（`docs/adr/`、`docs/research/`、`docs/design/`、路线图、风险登记、架构总览、仓库策略）**永不进入公开仓**，包括 git 历史。
 
-```
-apps/        # cli · web (Vite SPA) · tui (OpenTUI) · desktop (Tauri 2)
-packages/    # core (ingest/normalize/store) · pricing · adapter-* · design-tokens
-docs/        # architecture · design specs · dev process · ADRs · source specs · research
-```
+## 协作者准则
 
-## Documentation (mostly Chinese)
-
-- Architecture overview: [docs/架构总览.md](docs/架构总览.md)
-- Roadmap & priorities: [docs/路线图.md](docs/路线图.md)
-- Development process: [docs/开发流程.md](docs/开发流程.md)
-- Design principles: [docs/设计原则.md](docs/设计原则.md) · Design specs: [docs/design/](docs/design/)
-- Architecture decision records: [docs/adr/](docs/adr/)
-- Database schema (normative DDL): [docs/数据库-schema.md](docs/数据库-schema.md)
-- Data source format specs: [docs/sources/](docs/sources/)
-- Competitive research: [docs/research/竞品调研.md](docs/research/竞品调研.md)
-
-## Privacy
-
-Tokly uploads nothing and never stores conversation content (token/cost metrics only). Everything stays on your machine. See [SECURITY.md](SECURITY.md).
-
-## License
-
-[MIT](LICENSE)
-
----
-
-## 中文简介
-
-Tokly 是本地优先的开源 AI token 统计工具：一份本地数据，三种打开方式（Web Dashboard / TUI / 桌面端），覆盖 Claude Code、Codex CLI、OpenCode、Gemini CLI、Copilot、Cursor 的 token 消耗、成本、会话与工具调用。只读零侵入、永久历史仓库、逐数字溯源标注。仓库当前为纯文档状态（代码按文档重写中），文档以中文为主。MIT 许可。
+人类与 AI 协作者的行为准则见 [AGENTS.md](AGENTS.md)（公开贡献者版在公开仓）。

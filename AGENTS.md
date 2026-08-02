@@ -4,27 +4,27 @@
 
 ## 项目一句话
 
-Tokly：本地优先、开源（MIT）的 AI token 使用统计与可视化，六源 → 归一化 → SQLite 永久仓库 → Web/TUI/桌面三端。本仓库是**私有内部仓**（`tokly-internal`）：战略与设计文档。代码在公开仓 `tokly`（见 docs/仓库策略.md）。
+Tokly：本地优先、开源（MIT）的 AI token 使用统计与可视化，六源 → 归一化 → SQLite 永久仓库 → Web/TUI/桌面三端。本仓库是**私有内部仓**（`tokly-internal`）：战略与设计文档。代码在公开仓 `tokly`（见 docs/仓库策略.md）；公开贡献者版 AGENTS.md 在公开仓。
 
 ## 不可违反（违反的产出直接作废）
 
 1. **只读零侵入**：永不修改用户任何工具的配置/代理/环境变量（docs/adr/0003）
-2. **Spec 先行**：adapter 依据 `docs/sources/<name>.md`；格式文档不全先补文档，不写代码
+2. **Spec 先行**：adapter 依据公开仓 `docs/sources/<name>.md`；格式文档不全先补文档，不写代码
 3. **不按文档施工 = 没做**：契约以 docs/adr/0002（收敛）、docs/数据库-schema.md（DDL）、docs/design/（视觉）为准
 4. **私有/公开边界**：内部子集文档（adr/research/路线图/风险登记/架构总览/design）永不进入公开仓（docs/仓库策略.md）
-5. **无 AI 痕迹**：commit/PR/代码中不出现任何工具署名与 AI 腔（docs/git-规范.md、docs/代码风格.md）
+5. **无 AI 痕迹**：commit/PR/代码中不出现任何工具署名与 AI 腔（公开仓 docs/git-规范.md、docs/代码风格.md）
 
 ## 文档地图（按任务选读）
 
 | 任务 | 必读 |
 |---|---|
 | 改数据契约/schema | docs/adr/0002 · docs/数据库-schema.md |
-| 写/改 adapter | docs/sources/<name>.md · docs/adr/0002（口径不变量） |
-| 任何 UI | docs/设计原则.md · docs/design/ 三份 |
+| 写/改 adapter | 公开仓 docs/sources/<name>.md · docs/adr/0002（口径不变量） |
+| 任何 UI | 公开仓 docs/设计原则.md · docs/design/ 三份 |
 | 定价/成本 | docs/adr/0002（成本所有权节）· docs/风险登记.md R2 |
 | 配额窗口 | docs/adr/0008 |
 | 主题 | docs/adr/0005 · docs/design/令牌系统.md |
-| 提交/PR/发布 | docs/git-规范.md · docs/开发流程.md |
+| 提交/PR/发布 | 公开仓 docs/git-规范.md · docs/开发流程.md |
 | 写/改任何文档 | docs/文档规范.md（SSOT、分寿命、时效打戳） |
 
 ## 工作方式
