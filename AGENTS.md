@@ -11,21 +11,27 @@ Tokly：本地优先、开源（MIT）的 AI token 使用统计与可视化，�
 1. **只读零侵入**：永不修改用户任何工具的配置/代理/环境变量（docs/adr/0003）
 2. **Spec 先行**：adapter 依据公开仓 `docs/sources/<name>.md`；格式文档不全先补文档，不写代码
 3. **不按文档施工 = 没做**：契约以 docs/adr/0002（收敛）、docs/数据库-schema.md（DDL）、docs/design/（视觉）为准
-4. **私有/公开边界**：内部子集文档（adr/research/路线图/风险登记/架构总览/design）永不进入公开仓（docs/仓库策略.md）
+4. **私有/公开边界**：内部子集文档（adr/research/路线图/风险登记/架构总览/design）永不进入公开仓（docs/仓库策略.md）。嵌套布局下另有两条硬约束：**禁用 `git clean -xdff`**（它删除 ignored 目录，即整个本仓工作树），任何 `internal/` 路径的暂存文件由 hook 与 CI 双层拦截
 5. **无 AI 痕迹**：commit/PR/代码中不出现任何工具署名与 AI 腔（公开仓 docs/git-规范.md、docs/代码风格.md）
 
 ## 文档地图（按任务选读）
 
 | 任务 | 必读 |
 |---|---|
-| 改数据契约/schema | docs/adr/0002 · docs/数据库-schema.md |
-| 写/改 adapter | 公开仓 docs/sources/<name>.md · docs/adr/0002（口径不变量） |
-| 任何 UI | 公开仓 docs/设计原则.md · docs/design/ 三份 |
-| 定价/成本 | docs/adr/0002（成本所有权节）· docs/风险登记.md R2 |
-| 配额窗口 | docs/adr/0008 |
-| 主题 | docs/adr/0005 · docs/design/令牌系统.md |
-| 提交/PR/发布 | 公开仓 docs/git-规范.md · docs/开发流程.md |
-| 写/改任何文档 | docs/文档规范.md（SSOT、分寿命、时效打戳） |
+| 改数据契约/schema | docs/adr/0002（收敛契约）· docs/adr/0011（四层寿命）· docs/数据库-schema.md |
+| 写/改 adapter | 公开仓 docs/sources/<name>.md · docs/adr/0002（口径不变量）· docs/adr/0014（未验证格式版本的处置） |
+| 任何 UI | 公开仓 docs/设计原则.md · docs/design/ 四份 · docs/adr/0009（CSS 特性预算） |
+| 动效 | docs/design/动效规格.md（含感知层三条与可执行门禁）· docs/adr/0009 |
+| 定价/成本 | docs/adr/0002（成本所有权）· docs/adr/0015（精度与舍入）· docs/风险登记.md R2/R9 |
+| 配额窗口 | docs/adr/0008 · docs/design/组件规格.md §2（油表） |
+| 主题与令牌 | docs/adr/0005 · docs/adr/0017（引擎归属）· docs/design/令牌系统.md |
+| 进程/并发/本地服务 | docs/adr/0012 |
+| 配置项 | docs/adr/0010 · docs/design/组件规格.md §8（设置界面是配置面的 UI 投影） |
+| i18n | docs/adr/0007 · docs/adr/0016（运行期归属与格式化） |
+| 分发/签名/发布 | docs/adr/0013 · 公开仓 docs/git-规范.md · docs/开发流程.md |
+| 写/改任何文档 | docs/文档规范.md（SSOT、**跨仓事实映射表**、分寿命、时效打戳、CI 门禁） |
+
+改跨仓重复出现的概念前，先看 docs/文档规范.md 的**跨仓事实映射表**——公开仓的设计原则曾因不在同步清单里而停在换栈之前，那是机制问题不是疏忽。
 
 ## 工作方式
 
