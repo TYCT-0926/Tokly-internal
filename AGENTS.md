@@ -4,7 +4,7 @@
 
 ## 项目一句话
 
-Tokly：本地优先、开源（MIT）的 AI token 使用统计与可视化，六源 → 归一化 → SQLite 永久仓库 → Web/TUI/桌面三端。本仓库是**私有内部仓**（`tokly-internal`）：战略与设计文档。代码在公开仓 `tokly`（嵌套布局：本目录的上层即公开仓工作树，见 docs/仓库策略.md）；公开贡献者版 AGENTS.md 在公开仓，**不含本文件的协调与派发章节**。
+Tokly：本地优先、开源（MIT）的 AI token 使用统计与可视化，六源 → 归一化 → SQLite 永久仓库 → Web/TUI/桌面三端。本仓库是**私有内部仓**（`tokly-internal`）：战略与设计文档。代码在公开仓 `tokly`（嵌套布局：本目录的上层即公开仓工作树，见 docs/仓库策略.md）。**公开仓不设 AGENTS.md / CLAUDE.md**（可见性与痕迹控制，docs/仓库策略.md）——公开工作树根目录的同名文件是本地未跟踪副本，贡献者指引在公开仓 CONTRIBUTING.md。
 
 ## 不可违反（违反的产出直接作废）
 
