@@ -1,6 +1,6 @@
 # Tokly 内部仓库（tokly-internal）
 
-Tokly 的战略与设计文档仓，**私有，不放代码**。代码与公共文档子集在公开仓 [Tokly](https://github.com/TYCT-0926/Tokly)（本地 `E:/Axiom/Tokly-public`）。
+Tokly 的战略与设计文档仓，**私有，不放代码**。代码与公共文档子集在公开仓 [Tokly](https://github.com/TYCT-0926/Tokly)——本地即本目录的上层 `E:/Axiom/Tokly`（嵌套双仓：外层公开、本层私有）。
 
 Tokly：本地优先、开源（MIT）的 AI token 使用统计与可视化——六源 → 归一化 → SQLite 永久仓库 → Web/TUI/桌面三端。
 
