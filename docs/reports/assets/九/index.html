@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>阶段九 · TUI 可视化交付物</title>
+<style>
+  body { font-family: ui-monospace, Consolas, monospace; background: #120F0C; color: #EDE6E3; margin: 24px; }
+  h1 { font-size: 16px; } h2 { font-size: 14px; color: #B2ADA9; margin-top: 32px; }
+  p { color: #8A8582; font-size: 13px; max-width: 72em; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; }
+  figure { margin: 0; border: 1px solid #282522; padding: 8px; }
+  figcaption { font-size: 12px; color: #8A8582; padding: 6px 2px 2px; }
+  img, object { width: 100%; height: auto; display: block; background: #120F0C; }
+  a { color: #E0985A; }
+</style>
+</head>
+<body>
+<h1>阶段九 · TUI 可视化交付物</h1>
+<p>双击本文件即可离线查看。SVG 为 TestBackend 真实渲染缓冲的逐格序列化（字形与各档色值即终端所收内容）；
+conpty/*.png 为 Windows Terminal（ConPTY）真机窗口捕获。三档真机像素实测：truecolor 命中 #E0985A（accent.solid 精确值）、
+256 命中 #D7875F（xterm 173 精确值）、16 档按规格落 white（色相丢失为文档已知损失）。</p>
+
+<h2>录屏 · 交互序列（启动骨架 → 数据 → t 主题 × 2 → Tab 历史 → 80 列 → 60 列 → 摘要行）</h2>
+<div class="grid" style="grid-template-columns: 1fr;">
+  <figure><object type="image/svg+xml" data="svg/session.svg"></object><figcaption>svg/session.svg · 动画自动循环，无需安装任何东西</figcaption></figure>
+</div>
+
+<h2>真机 ConPTY（Windows Terminal · amber-dark · 监控视图）</h2>
+<div class="grid">
+  <figure><img src="conpty/conpty-truecolor.png"><figcaption>truecolor</figcaption></figure>
+  <figure><img src="conpty/conpty-256.png"><figcaption>256</figcaption></figure>
+  <figure><img src="conpty/conpty-16.png"><figcaption>16（accent 落 white，规格已知损失）</figcaption></figure>
+</div>
+
+<h2>矩阵 · amber-dark（宽度 × 色档）</h2>
+<div class="grid">
+  <figure><object type="image/svg+xml" data="svg/amber-dark-monitor-120x36-tc.svg"></object><figcaption>monitor 120 · truecolor</figcaption></figure>
+  <figure><object type="image/svg+xml" data="svg/amber-dark-monitor-120x36-256.svg"></object><figcaption>monitor 120 · 256</figcaption></figure>
+  <figure><object type="image/svg+xml" data="svg/amber-dark-monitor-120x36-16.svg"></object><figcaption>monitor 120 · 16</figcaption></figure>
+  <figure><object type="image/svg+xml" data="svg/amber-dark-monitor-80x24-tc.svg"></object><figcaption>monitor 80 · truecolor</figcaption></figure>
+  <figure><object type="image/svg+xml" data="svg/amber-dark-monitor-60x20-tc.svg"></object><figcaption>monitor 60 · truecolor（列从右整列丢弃）</figcaption></figure>
+  <figure><object type="image/svg+xml" data="svg/amber-dark-history-120x36-tc.svg"></object><figcaption>history 120 · truecolor（braille 热力图）</figcaption></figure>
+  <figure><object type="image/svg+xml" data="svg/amber-dark-history-80x24-tc.svg"></object><figcaption>history 80 · truecolor（mini bar 可见）</figcaption></figure>
+  <figure><object type="image/svg+xml" data="svg/amber-dark-history-60x20-tc.svg"></object><figcaption>history 60 · truecolor</figcaption></figure>
+  <figure><object type="image/svg+xml" data="svg/amber-dark-history-120x36-16.svg"></object><figcaption>history 120 · 16（热力仅靠密度）</figcaption></figure>
+  <figure><object type="image/svg+xml" data="svg/amber-dark-diagnostics-120x24-tc.svg"></object><figcaption>diagnostics（只读降级态）</figcaption></figure>
+</div>
+
+<h2>mono 家族（C=0 纯灰）与浅色配对</h2>
+<div class="grid">
+  <figure><object type="image/svg+xml" data="svg/mono-dark-monitor-120x36-tc.svg"></object><figcaption>mono-dark monitor 120 · truecolor</figcaption></figure>
+  <figure><object type="image/svg+xml" data="svg/mono-dark-history-120x36-tc.svg"></object><figcaption>mono-dark history 120（灰阶明度分档）</figcaption></figure>
+  <figure><object type="image/svg+xml" data="svg/amber-light-monitor-120x36-tc.svg"></object><figcaption>amber-light monitor 120</figcaption></figure>
+  <figure><object type="image/svg+xml" data="svg/paper-light-history-120x36-tc.svg"></object><figcaption>paper-light history 120</figcaption></figure>
+</div>
+
+<p>完整 40 张矩阵在 <a href="svg/">svg/</a> 目录（amber-dark 与 mono-dark 各 3 宽度 × 3 档 × 2 视图）。</p>
+</body>
+</html>
