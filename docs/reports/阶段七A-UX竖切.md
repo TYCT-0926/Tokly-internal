@@ -202,7 +202,26 @@ MockLive.commit()（写代次 +1，确定性批次）
 | 9 | 首屏字体 font-display:swap | 本地毫秒级加载，交换不可感；未做 preload |
 | 10 | **TUI 侧交付物（assets/九/）归属假设**：维护者追加消息的 TUI 段按并行的 feat/tui-slice 执行者理解，本报告不含 | 如归属有误请指回 |
 
-## 八、结构速览
+## 八、交叉评审（Sonnet 独立复核全量 diff）与 CI 事故
+
+**评审结论 NEEDS-WORK，8 项发现，全部处置完毕**：
+
+| # | 发现 | 处置 |
+|---|---|---|
+| 1 | `test-results/` 本地产物被 `git add -A` 扫入提交（含带绝对路径的失败上下文） | 已 `git rm --cached` + `.gitignore` 补 `test-results/`、`playwright-report/` |
+| 2 | 门禁只认 `linear-gradient`，radial/conic 漏网 | 正则扩全四种 gradient + fixture 测试 |
+| 3 | box-shadow blur 非 px 单位静默跳过 | 非 px blur 字面量直接判违例 + 测试 |
+| 4 | 具名色（`red`/`white`）不在 no-color-literals 检测面 | 补 24 个高频具名色整词检测（引号串先剥离，字体名豁免）+ 测试 |
+| 5 | transition 简写按逗号裂解会被 `cubic-bezier(0.4, 0, …)` 内逗号误切（潜伏） | 先空括号组再裂解 + 双向测试 |
+| 6 | EventLogTable 缺 `scrollMargin`（sticky 表头占位使可见窗计算偏一行，被 overscan 掩蔽） | 补 `scrollMargin` 并按 v3 语义 `start - scrollMargin` 定位；实测顶部 gap=0、末行 4992/4992 齐平 |
+| 7 | commit 事件 scopes 不含 `health`，源统计陈旧至下次全量失效 | scopes 补 `health` + 测试 |
+| 8 | SSE 首事件基线化窗口内的提交不触发失效（首查询与握手之间） | **记为文档化残余缺口**：窗口极窄（同步启动收窄）、后续任一版本推进即收敛；真服务侧属 7B 契约实现时统一处理 |
+
+评审确认健全的区域：聚合边界（NOW+1/周一对齐/保留截断）、intro StrictMode 安全性、aria 行号无偏移、CI yaml 结构、全链绿色复跑。
+
+**CI 事故（与代码无关）**：npm 上游 `cacheable` 家族当日发布的五个版本（cacheable/@cacheable/memory/@cacheable/utils/flat-cache/file-entry-cache）元数据在而 tarball 404，本地 store 缓存掩盖、CI `--frozen-lockfile` 暴露。已全量 HEAD 扫描 463 个 lockfile tarball 确认死包集合，pnpm overrides 钉回存活前版。上游修复后可撤销 overrides。
+
+## 九、结构速览
 
 ```
 apps/web/
