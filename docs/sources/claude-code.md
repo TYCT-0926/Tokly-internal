@@ -21,7 +21,13 @@
 
 ### 事件类型清单
 
-**白名单原则：只消费 `type == "assistant"` 且 `message.usage` 为对象的事件，其余全部跳过。** 版本间类型增减频繁，黑名单必然漏掉新类型。
+**白名单原则：只消费 `type == "assistant"` 且 `message.usage` 为对象的事件。** 版本间类型增减频繁，黑名单必然漏掉新类型。
+
+**跳过与留证的分界（2026-08-04 阶段三B 复审裁决，消解本行与「已验证格式版本集合」节的冲突）**：
+- `type != "assistant"`、或 assistant 行 **`message.usage` 完全缺失** → **跳过**，不留证（不是格式演进信号，只是无 token 的行）；
+- assistant 行 **`usage` 存在但不是对象**、或 usage 内已知 token 字段非整数 → **不跳过**：按可解析部分入库、`status='excluded'`、`excludeReason='unverified-schema'` + 记 `ingest_errors`（见「已验证格式版本集合」节与 ADR-0014）。
+
+本行原文的"其余全部跳过"写在 ADR-0014 之前，与后补的 unverified-schema 机制冲突。裁 unverified-schema 胜：源 30 天即删，**静默跳过等于永久不可见的丢失**，而"存在但形状变了"正是格式演进的典型信号——少算必须可见（ADR-0014「少算是可见的，错算是不可见的」）。
 
 | type | 处理 | 说明 |
 |---|---|---|
