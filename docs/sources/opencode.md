@@ -87,21 +87,21 @@ event / event_sequence          -- 事件溯源新机制，本机 0 行，暂不
 | projectKey / projectLabel | label = `session.project_id → project.worktree`（或 `project.name`），兜底 `session.directory`；key 由 core 统一归一化 |
 | timestamp | `message.time_created`（ms epoch）；完成时间可取 `data.time.completed` |
 | durationMs | `data.time.completed - data.time.created`（可得时） |
-| agent / mode | `data.agent` / `data.mode`（如 `build`） |
+| agent / mode | `data.agent` / `data.mode`（如 `build`）；`data.agent` 缺失/降级规则见「agent 归一化规则」节（ADR-0018） |
 | model | `data.providerID + "/" + data.modelID`；Gen B 的 `session.model`（JSON `{id,providerID,variant}`）只是最后使用模型，**勿作事件级模型** |
 | tokens 五维 | **经版本化 resolver 判别后映射**（见下节），禁止直接复制 |
-| tokenQuality | resolver 命中：`'native'`；fail-visible 排除的事件不入聚合 |
+| tokenQuality | `'native'`——resolver 命中与 fail-visible 排除行同值（excluded 是状态不是数据质量，2026-08-04 裁决补句）；排除事件不入聚合 |
 | costNativeMicroUSD | `round(data.cost × 1e6)`（micro-USD；源 REAL 仅此处一次换算） |
 | nativeCostKind / nativeCostProvider | `'tool-computed'` / `'opencode:models.dev'`（工具自算，非账单值，见「成本语义」） |
 | pricingEligibility / displayPolicy | `'standard'` / `'both'`（native vs computed 双列展示差异，#28494 低估变差异化提示） |
-| toolCall | 由该 message 的 `part.data.type='tool'` 行展开：`{name: data.tool, callID, status: data.state.status, title: data.state.title}`，落 `tool_calls` 子表（含 status/时长，ADR-0002） |
+| toolCall | 由该 message 的 `part.data.type='tool'` 行展开：`{name: data.tool, callID, status: data.state.status, durationMs: data.state.time.end - data.state.time.start（可得时）}`，落 `tool_calls` 子表（含 status/时长，ADR-0002）。`state.title` **不映射**（2026-08-04 裁决：tool_calls 只存指标，自由文本贴内容红线，以 ADR-0002 列集为准） |
 
 ### token 语义的版本化 resolver（二轮审查 §1/§2）
 
 `data.tokens` 五维的**包含关系依 provider 与 schema 代际而异**（reasoning 是否计入 output、cache read/write 是否计入 input、`total` 由哪些分项构成），直接复制五维值会把错误口径永久写进仓库。resolver 按序判别：
 
 1. **版本表命中**：已验证的 `(providerID, modelID 族, opencode 版本 / schema 代际)` 组合查 adapter 内置版本表，直接定语义（版本表是代码的一部分，每格附 golden fixture 证据）；
-2. **total 方程判别**：版本表未覆盖时，用 `data.tokens.total` 反推——枚举包含关系假设（reasoning⊂output？cache⊂input？total=哪些分项之和），恰有**唯一**假设使方程成立才采纳；
+2. **total 方程判别**：版本表未覆盖时，用 `data.tokens.total` 反推——枚举包含关系假设（reasoning⊂output？cache⊂input？total=哪些分项之和），恰有**唯一**假设使方程成立才采纳。**唯一性定义在映射结果，不在假设标签**（2026-08-04 数据门裁决）：退化输入（如 cache 与 reasoning 全零）下多个假设同时成立但映射结果相同，即为唯一解、照常采纳；『多解』专指成立的假设之间映射结果不同；
 3. **fail-visible**：无法唯一判别（total 缺失、多解、与分项矛盾）→ 事件 `status='excluded'` + `excludeReason='unresolved-token-semantics'`，`rawUsage` 与 payloadHash 留存，记 `conflict_observations`（kind=`unresolved-semantics`），UI 报警可见。**禁止默认任一包含关系。**
 
 判别结果连同 `normalizerVersion` 入库，版本表演进后可按版本重归一化。入库口径必须满足 ADR-0002 不变量：`tokens.output` 恒含 reasoning（provider 未计入时 adapter 并入，reasoning 仍保留为信息性子集）；`tokens.cacheWrite5m` = `cache.write`（无分档 → 默认 5m 档）、`cacheWrite1h = 0`。
@@ -139,6 +139,21 @@ event / event_sequence          -- 事件溯源新机制，本机 0 行，暂不
 - **cost 低估**：#28494（cache-read 未计价）、#30706（cost=0）；无价目模型 cost=0。cost=0 且 tokens>0 的事件 `pricingEligibility` 仍为 `'standard'`——Tokly 自算列会给出 computed 值，`displayPolicy='both'` 下差异直接可见。
 - `tokens.total` 可能 ≠ 分项和——这正是版本化 resolver 的判别输入，见映射节。
 
+## 已验证格式版本集合（2026-08-03）
+
+- **已验证集合**：SQLite Gen A（`session` 无用量列，`__drizzle_migrations` 最新迁移 `20260323234822_events`，本机主库只读实测）与 Gen B（迁移 ≥ `20260510033149_session_usage`，`session` 追加累计 rollup 列，本机附加库只读实测），均取自 opencode **v1.4.3**（1.1GB / 2281 会话 / 48735 消息 / 199484 part）。
+- **旧版 JSON 布局（< v1.2.0）不在本机实测集合内**：本机 `storage/` 下会话 JSON 已被迁移清理无残留内容，该布局仅交叉验证上游源码（message-v2.ts）与 issue（#966/#34445/#13654），无本地 golden fixture 支撑。
+- 与「token 语义的版本化 resolver」按 provider/model 判别 token 包含关系的版本表是正交维度：本节针对库/文件**结构**版本（`raw_schema`/`format_version`），resolver 表针对**字段语义**（reasoning/cache 归属）。
+- **unverified-schema 触发条件（ADR-0014）**：`__drizzle_migrations` 出现集合外迁移名（既非 Gen A 已知迁移、也不落在 Gen B 已知区间），或 JSON 回退文件的字段结构与「旧版 JSON 布局」节描述不符——事件按可解析部分入库、`status='excluded'`、`exclude_reason='unverified-schema'`，记 `ingest_errors`（错误码 `unverified-schema`，`detail_key` 记迁移名/版本标识），不默认套用 Gen A/B 或 JSON 布局语义。
+- 集合演进：每支持一个新迁移代际，本节与 golden fixtures 同批更新（ADR-0014）。
+
+## agent 归一化规则（ADR-0018，2026-08-03）
+
+| 事件来源 | `agent` 取值 |
+|---|---|
+| assistant 消息（主会话或 Task 子代理会话，同一规则统一适用——`agent` 是消息级字段，不按会话层级特判） | `data.agent` 原值（如 `build`/`plan`/自定义 agent 名） |
+| `data.agent` 缺失或为空字符串 | `''`（无智能体，ADR-0018 哨兵值；**不回退到** `data.mode`——mode 是独立聚合维度，见「归一化映射」表，二者不得合并） |
+
 ## 能力声明
 
 - 可提供：五维 token（input/output/reasoning/cacheRead/cacheWrite，经版本化 resolver）、providerID+modelID、工具自算成本、session/parentSession 归属、project 归属、工具调用明细、ms 级时间戳。
@@ -156,3 +171,4 @@ event / event_sequence          -- 事件溯源新机制，本机 0 行，暂不
 - [anomalyco/opencode #22110 — 存储无清理机制，无限增长](https://github.com/anomalyco/opencode/issues/22110)
 - [上游源码 message-v2.ts — 表结构水合与 (time,id) 游标分页](https://raw.githubusercontent.com/sst/opencode/dev/packages/opencode/src/session/message-v2.ts)
 - [models.dev — opencode 成本价目来源](https://models.dev/)
+

@@ -73,7 +73,7 @@
 }
 ```
 
-口径要点（与 Anthropic API / ccusage 一致）：`input_tokens`、`cache_read_input_tokens`、`cache_creation_input_tokens` **三者互斥**，总输入 = 三者之和；不要把 cache 部分再加进 input。`output_tokens` 恒含 thinking（`output_tokens_details.thinking_tokens` 只是信息性细分）；`service_tier`（standard/priority 等）影响计价费率档，映射到 `UsageEvent.serviceTier`；`inference_geo` 暂只存档不展示。
+口径要点（与 Anthropic API / ccusage 一致）：`input_tokens`、`cache_read_input_tokens`、`cache_creation_input_tokens` **三者互斥**，总输入 = 三者之和；不要把 cache 部分再加进 input。`output_tokens` 恒含 thinking（`output_tokens_details.thinking_tokens` 只是信息性细分）；`service_tier`（standard/priority 等）影响计价费率档，映射到 `UsageEvent.serviceTier`；`inference_geo` 见映射表（不映射，M1 顺带评估存档——2026-08-04 裁决收敛旧「暂只存档」措辞）。
 
 **无原生成本字段**：整条事件链没有任何美元金额，成本必须由 Rust `pricing` crate 计算。
 
@@ -86,12 +86,13 @@
 | `eventKey`（去重键） | `sha1(message.id + ":" + requestId)`；缺任一字段时回退行级 `uuid` 并标 `identityQuality='weak'`；`uuid` 也缺失则无法稳定标识，记 `ingest_errors` 不入库（二轮审查 §2）。**禁止无标注地用 uuid**（重复风险见去重节） |
 | `identityQuality` | 键由 `message.id+requestId` 构成：`'strong'`；回退 uuid：`'weak'` |
 | `revision` | `originStream` = 相对 projects 根的文件路径；`streamGeneration` = 文件身份代际（身份断裂 ++）；`sourcePosition` = 字节偏移。**只在同 stream 内可比**（ADR-0002 收敛契约） |
-| `payloadHash` | 该行原始字节的 sha256 |
+| `payloadHash` | 该行原始字节的 sha256；**子代理文件**额外把归一化后的 agent 值（来自 `.meta.json`，见「agent 归一化规则」节）以 0x1f 分隔拼入哈希输入（2026-08-03）——meta 是行外上下文，不掺入则「同 hash ⇒ 同归一化事件」不变量被打破，代际重读时来自 meta 的修正值会被收敛契约规则 4 当作重复观测永久丢弃 |
 | `sessionKey` | 主会话事件：事件的 `sessionId`；子代理事件：`"<sessionId>:<agentId>"`（`agentId` 为子代理文件每行的 `agentId` 字段） |
 | `parentSessionKey` | 子代理事件：事件的 `sessionId`（即主会话 uuid）；主会话事件：缺省 |
 | `projectKey` / `projectLabel` | label = 事件的 `cwd`（原样保存，不做加工）；key 由 core 统一归一化 |
 | `timestamp` | 事件的 `timestamp` 解析为 epoch_ms |
 | `model` | `message.model` |
+| `agent` | 主会话事件恒 `''`；子代理事件取同名 `.meta.json` 的 `agentType`；旧版内嵌 sidechain 事件取 `'sidechain'`。细则与降级见「agent 归一化规则」节（ADR-0018） |
 | `tokens.input` | `usage.input_tokens ?? 0` |
 | `tokens.output` | `usage.output_tokens ?? 0`（含 thinking，符合 ADR-0002 口径不变量） |
 | `tokens.cacheRead` | `usage.cache_read_input_tokens ?? 0` |
@@ -103,6 +104,7 @@
 | `cliVersion` | 事件的 `version` |
 | 成本列 | `costNativeMicroUSD = null`（无原生成本）；`pricingEligibility='standard'`；`displayPolicy='computed-only'`（ADR-0002 成本所有权） |
 | `event_charges` | 可选：`usage.server_tool_use` 的 `web_search_requests`/`web_fetch_requests` 非零时落 `event_charges`（kind=`web-search`/`web-fetch`） |
+| `inference_geo` | **不映射**（2026-08-04 裁决入表；M1 顺带评估是否存档，adapter 现状忽略） |
 | `toolCall` | 可选：从 assistant `content[]` 中 `tool_use` 块取 `name`。**落 `tool_calls` 子表**（事件身份关联），不再发零 token 独立事件（ADR-0002） |
 
 ## 增量摄取策略
@@ -114,7 +116,7 @@
 3. **截断/替换检测**：文件大小 < 水位线偏移，或文件被整体重写 → 该流 `generation++` 全量重读。幂等性由 `(sourceInstanceId, eventKey)` 主键保证，重读不产生重复。
 4. **文件删除**：Claude Code 启动时按 `cleanupPeriodDays`（默认 30 天）删除旧 jsonl——本机实测最老文件恰好 30 天。adapter 发现文件消失时静默丢弃水位线，已入库数据不受影响（这正是 Tokly 本地仓库的价值；**缺席 ≠ 删除**，不标 tombstone）。
 5. **无差分需求**：`usage` 是单次 API 调用的瞬时值，非累计计数器，无需相邻事件差分。
-6. 扫描范围（二轮审查 §2 明写）：`projects/*/*.jsonl` 及 `projects/*/*/subagents/*.jsonl` 两层通配；`*.meta.json` 只读用于会话标题/类型展示，不进用量管线。
+6. 扫描范围（二轮审查 §2 明写）：`projects/*/*.jsonl` 及 `projects/*/*/subagents/*.jsonl` 两层通配；`*.meta.json` 只读——其 `agentType` 字段用于 agent 归一化（见「agent 归一化规则」节），其余字段仅供会话标题/类型展示，不进用量管线。
 
 ## 去重与已知坑
 
@@ -130,6 +132,22 @@
 5. **版本差异**：事件含 `version` 字段（本机样本 2.1.200–2.1.208）。旧版有 `summary` 首行、内嵌 sidechain；新版有 subagents 目录、更多辅助类型。坚持白名单 + 可选字段兜底（`?? 0`）即可兼容，不为特定版本写分支逻辑。
 6. **历史深度硬上限**：`cleanupPeriodDays` 默认 30 天启动即删，不可恢复（[claude-code#62476](https://github.com/anthropics/claude-code/issues/62476)、[官方 settings 文档](https://docs.anthropic.com/en/docs/claude-code/settings)）。首次导入必须全量回填本地已有全部历史，之后增量保鲜；UI 不得承诺超过本地文件的历史。
 
+## 已验证格式版本集合（2026-08-03）
+
+- **已验证集合（结构形态定义）**：`type == "assistant"` 且 `message.usage` 为对象、token 四计数字段（`input_tokens` / `output_tokens` / `cache_read_input_tokens` / `cache_creation_input_tokens`）为可选非负整数的行结构。实测覆盖 Claude Code **v2.1.200–2.1.208**（2026-08-03，本机 35 项目 / 106 jsonl 只读抽样）。
+- **本源无独立格式版本字段**：事件内 `version` 是 CLI 版本而非格式版本，按映射表落 `cliVersion`（`rawSchema` 留空——2026-08-04 裁决以映射表为准收敛本节旧措辞）仅供排查，**不作为 unverified-schema 的触发条件**——否则源工具每次发版都会把新用量整批 excluded，与白名单 + 可选字段兜底的兼容策略（见「去重与已知坑」5）矛盾。
+- **unverified-schema 触发条件（结构性，ADR-0014）**：`type == "assistant"` 且 `message.usage` 存在但**不是对象**，或 usage 内已知 token 字段出现非整数类型——事件按可解析部分入库、`status='excluded'`、`excludeReason='unverified-schema'`，记 `ingest_errors`（错误码 `unverified-schema`，`detail_key` 记 cliVersion）。usage 完全缺失的 assistant 行按既有白名单规则跳过，不属格式演进信号。
+- 集合演进：每支持一个新结构形态，本节与 golden fixtures 同批更新（ADR-0014）。
+
+## agent 归一化规则（ADR-0018，2026-08-03）
+
+| 事件来源 | `agent` 取值 |
+|---|---|
+| 主会话文件（`projects/*/*.jsonl`）非 sidechain 事件 | `''`（无智能体） |
+| 子代理文件（`*/subagents/agent-<agentId>.jsonl`） | 同名 `.meta.json` 的 `agentType`（如 `code-reviewer`）——低基数、可聚合；**不用 `agentId`**（每次派生唯一，会把永久聚合键炸成高基数，违反 ADR-0018 预算前提） |
+| 子代理文件但 `.meta.json` 缺失或无 `agentType` | `'subagent'`（显式未知型占位——不用 `''`：空串会把子代理用量静默并进主会话桶，丢掉 ccusage #313 教训里的维度） |
+| 旧版内嵌 sidechain 事件（`isSidechain: true` 于主文件内） | `'sidechain'` |
+
 ## 能力声明
 
 | 能力 | 支持 | 备注 |
@@ -140,6 +158,7 @@
 | 时间戳 / 项目 / git 分支 | ✅ | `timestamp` / `cwd` / `gitBranch` |
 | 工具调用 | ✅ | assistant `tool_use` 块 + user `toolUseResult` + 子代理 meta |
 | 子代理用量 | ✅ | subagents 目录（新版）/ isSidechain（旧版） |
+| 智能体维度（agent） | ✅ | `agentType`（meta）归一化，规则见「agent 归一化规则」节 |
 | 成本 | computed | 无原生字段；`usage.cache_creation` 的 5m/1h 细分（一致性裁决后）+ `server_tool_use` 次数可支持精细计价 |
 | 历史深度 | 受源限制 | 默认仅最近 30 天（`cleanupPeriodDays`），用户调大则更深 |
 
@@ -153,3 +172,4 @@
 - [LiteLLM 价格表（computed 成本来源）](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json)
 
 > 本文档格式细节经本机只读抽样验证（Claude Code v2.1.200–2.1.208，Windows，35 个项目目录 / 106 个 jsonl）；示例均为虚构脱敏数据。
+

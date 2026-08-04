@@ -72,9 +72,10 @@ OpenAI Codex CLI 的本地会话记录（rollout JSONL），按行持久化会�
 
 | UsageEvent 字段 | 取值 |
 | --- | --- |
-| `source` | `"codex"`（二轮审查 §1 交叉一致性：与核心六值枚举对齐，替代旧 spec 的 `"codex-cli"`） |
+| `source` | `"codex"`（二轮审查 §1 交叉一致性；与 DDL 开放源标识格式约束对齐，替代旧 spec 的 `"codex-cli"`，ADR-0018） |
 | `sourceInstanceId` | core 按 `(source, account, machine, dataRoot)` 创建 `source_instances` 行；`dataRoot` = `CODEX_HOME` 或 `~/.codex` 规范化路径；格式代际记入实例 `format_version`（`'legacy'` / `'paginated'`，见坑 7） |
-| `eventKey`（去重键） | 无原生事件 ID。流内主键用 `相对文件路径:字节偏移`（摄取幂等）；跨流辅键用内容哈希 `sha256(timestamp\|model\|input\|cached\|cache_write\|output\|reasoning\|total)`——对应 ccusage 的内容键去重，可吸收 fork 复制出的重复事件。跨流同键按 ADR-0002 收敛契约：payloadHash 相同去重，不同进 `conflict_observations` |
+| `eventKey`（去重键） | 无原生事件 ID，**单值定义 = 内容哈希** `sha256(timestamp\|model\|input\|cached\|cache_write\|output\|reasoning\|total)`（2026-08-04 数据门裁决收敛：唯一与 ADR-0002 规则 4 fork 去重相容的读法；对应 ccusage 的内容键，可吸收 fork 复制出的重复事件）。字节编码细则（timestamp 形态、差分或累计值、分隔符）待阶段八实机样本冻结，契约快照以 UNRESOLVED 标记在册。`相对文件路径:字节偏移` 仅是流内摄取位置（revision.sourcePosition），**不是事件键**。跨流同键按 ADR-0002 收敛契约：payloadHash 相同去重，不同进 `conflict_observations` |
+| `identityQuality` | `'strong'`（2026-08-04 裁决补行）：内容哈希是本源的**设计键**而非 fallback；哈希已含时间戳与全部计量参数，同毫秒同参数两次调用被合并的残余风险可接受，在此记录为已知残余。`'weak'` 保留给真正由 fallback 构成的键 |
 | `revision` | `originStream` = 相对 sessions 根的路径；`streamGeneration` = 文件身份代际；`sourcePosition` = 字节偏移（paginated 布局按页内偏移，见坑 7） |
 | `payloadHash` | 该行原始字节的 sha256 |
 | `sessionKey` | 文件内**第一条** `session_meta.payload.id`（后续 meta 行属父历史，忽略） |
@@ -82,13 +83,15 @@ OpenAI Codex CLI 的本地会话记录（rollout JSONL），按行持久化会�
 | `projectKey` / `projectLabel` | label = `session_meta.payload.cwd`（可用 `turn_context.cwd` 兜底）；key 由 core 统一归一化 |
 | `timestamp` | 行级 `timestamp`（UTC RFC3339）解析为 epoch_ms |
 | `model` | 该条 token_count 之前最近的 `turn_context.payload.model`；无 turn_context 的早期文件（2025-09 上旬）置 `null`（ADR-0002 禁魔法值；由 pricing worker 落 `unmatched`，缺口可见） |
+| `agent` | 主线程文件恒 `''`；子代理文件取 `source.subagent.thread_spawn.agent_nickname`，缺失/空 → `'subagent'`；`agent_path` 永不作维度。细则与复核标注见「agent 归一化规则」节（2026-08-03 裁决，待阶段八实机样本复核） |
 | `tokens.input` | **净输入公式（二轮审查修正）**：对差分量顺序 clamp 后同时减两种 cache——`cacheRead = clamp(cached_input_tokens, 0, input_tokens)`；`cacheWrite = clamp(cache_write_input_tokens ?? 0, 0, input_tokens − cacheRead)`；`tokens.input = input_tokens − cacheRead − cacheWrite`。cache read 与 cache write **都是** input 的 details（上游测试：100/40/60 → 0），只减 read 会虚高 |
 | `tokens.cacheRead` | 上式的 `cacheRead` |
 | `tokens.cacheWrite5m` | 上式的 `cacheWrite`（无 5m/1h 分档概念，全部计默认 5m 档，ADR-0002）；`tokens.cacheWrite1h = 0` |
 | `tokens.output` | `output_tokens`（含 reasoning，符合口径不变量） |
 | `tokens.reasoning` | `reasoning_output_tokens`（信息性，是 output 子集，不重复计价） |
 | `tokenQuality` | `'native'` |
-| `serviceTier` | `thread_settings_applied`（0.144.0+）的 `service_tier`（priority/fast/default），缺省 null |
+| `serviceTier` | `thread_settings_applied`（0.144.0+）的 `service_tier`（priority/fast/default），缺省 null；载荷形状未经实机验证，契约快照暂不覆盖 |
+| `cliVersion` | **不映射**（2026-08-04 裁决显式化，契约快照已如此冻结）：`session_meta.cli_version` 是建会话时原值、禁作行为分支（坑 4），仅供排查，不上事件 |
 | 成本列 | `costNativeMicroUSD = null`（无原生成本）；`pricingEligibility='standard'`；`displayPolicy='computed-only'` |
 | `toolCall` | 可从 `response_item` 的 `function_call` / `custom_tool_call` / `local_shell_call` 提取（可选增强），落 `tool_calls` 子表（ADR-0002） |
 | → `quota_snapshots` | 每条 `token_count` 的 `rate_limits` 是官方配额快照，落 `quota_snapshots` 表（`provenance='official'`），零推算——见内部 ADR-0008。**采集独立于下方的 token 跳过逻辑**（增量摄取节第 6 条） |
@@ -120,6 +123,25 @@ OpenAI Codex CLI 的本地会话记录（rollout JSONL），按行持久化会�
 6. **重复快照**：同一累计值可能被重复落盘（费率刷新等），靠算法第 2 条过滤；`thread_settings_applied`（0.144.0+）的 `service_tier`（priority/fast/default）可用于区分计费率，与 token 无关但影响计价。
 7. **rollout 分页化（0.146.0 起，已合并，adapter 必须双格式兼容）**：上游已把 rollout 落盘从单文件纯追加演进为分页化（openai/codex [#30188](https://github.com/openai/codex/issues/30188) / [#32332](https://github.com/openai/codex/issues/32332) / [#33930](https://github.com/openai/codex/issues/33930)，2026-07 合并，随 0.146.0 发布；二轮审查 §3 确认）。这不是未来风险而是现役事实：adapter 必须同时兼容 **legacy（单文件纯追加）与 paginated 两种布局**，按文件布局判别格式代际并记入 `source_instances.format_version`；paginated 布局下 `streamKey` 指向页序列、`sourcePosition` 按页内偏移定义。两种布局各出 golden fixtures（M0.5 冻结门交付物），页格式细节以 fixtures 冻结为准。
 
+## 已验证格式版本集合（2026-08-03）
+
+- **已验证集合**：legacy 布局（单文件纯追加，逐行 `{"timestamp","type","payload"}`，`token_count` 载荷结构见「token 字段的确切位置」），cli_version **0.133.0-alpha.1 – 0.146.0**（本机 269 个 rollout 文件只读实测，见「数据位置」）。
+- **paginated 布局**（0.146.0 起随上游分页化演进新增，见上「去重与已知坑」7）：结构依据上游源码（policy.rs / protocol.rs）与 ccusage 实现推导，本机尚无样本，暂不计入已验证集合；两种布局各自的 golden fixtures 是 M0.5 冻结门交付物，页格式细节以 fixtures 冻结为准。
+- **unverified-schema 触发条件（ADR-0014）**：文件既不满足 legacy 布局的逐行结构，也不满足冻结后的 paginated 布局判别规则 → 该流按 unverified-schema 处置：事件按可解析部分入库、`status='excluded'`、`exclude_reason='unverified-schema'`，记 `ingest_errors`（错误码 `unverified-schema`，`detail_key` 记 cli_version）；集合外版本不猜语义。
+- 历史边界（上「去重与已知坑」5：2025-09-09 前无 token 数据、09-09～09-11 模型未知）按既定规则处理（无数据 / `model=null`），不触发 unverified-schema。
+- 集合演进：每支持一个新布局/版本变体，本节与 golden fixtures 同批更新。
+
+## agent 归一化规则（ADR-0018，2026-08-03）
+
+维护者已裁决（2026-08-03，阶段二裁决记录；**待阶段八实机样本复核**——样本若证伪 nickname 的低基数假设，届时重议）：
+
+| 事件来源 | `agent` 取值 |
+|---|---|
+| 无 `source.subagent.thread_spawn` 的主线程文件 | `''`（无智能体） |
+| 子代理 rollout 文件（`thread_spawn` 存在） | **`agent_nickname`**（语义标签、低基数，符合 ADR-0018 聚合预算）；缺失或空 → `'subagent'` 占位（与 claude-code / gemini-cli 先例一致，不用 `''` 以免子代理用量静默并入主会话桶） |
+
+**`agent_path` 永不作维度**（高基数 + 机器路径）：仅可用于会话树展示与调试，不进任何聚合键。
+
 ## 能力声明
 
 - 可提供：每次 API 调用的 input/cacheRead/cacheWrite/output/reasoning token、会话/父子会话树、项目路径、逐轮模型、精确到毫秒的时间戳、CLI 版本、官方 rate_limits 配额快照。
@@ -136,3 +158,4 @@ OpenAI Codex CLI 的本地会话记录（rollout JSONL），按行持久化会�
 - 归档实现：<https://github.com/openai/codex/blob/main/codex-rs/thread-store/src/local/archive_thread.rs>
 - ccusage Codex 适配器（差分/重放前缀/去重算法）：<https://github.com/ccusage/ccusage/tree/main/rust/adapters/codex> 及其文档 <https://github.com/ccusage/ccusage/blob/main/docs/guide/codex/index.md>
 - 竞品教训：ccusage issue #19（分支会话重复计数）、#313（子任务 token 追踪）：<https://github.com/ccusage/ccusage/issues/19>
+

@@ -3,6 +3,7 @@
 本文是 Tokly 本地仓库的**规范 schema**，M0.5 冻结门交付物（见 [路线图](路线图.md)）。契约语义见 [ADR-0002](adr/0002-数据架构.md)（收敛契约、成本所有权、水位线三类源语义）；四层寿命与可重建性见 [ADR-0011](adr/0011-存储生命周期.md)；计价精度见 [ADR-0015](adr/0015-计价精度.md)；配额语义见 [ADR-0008](adr/0008-配额窗口.md)。
 
 **2026-08-03 四轮修订**（依据 [审查-2026-08-03](research/审查-2026-08-03.md)）：全表转 `STRICT`；补 `usage_observations` 观测层与 `daily_tool_rollups`；解开 `conflict_observations` 的外键死锁；日聚合修复主键并记录时区；`event_charges.quantity` 去 REAL。逐项理由见文末「本次修订的问题清单」。
+**同日增补（[ADR-0018](adr/0018-开放源集与智能体维度.md)）**：源集合开放化——`source` 由封闭枚举 CHECK 改为格式约束，新源零迁移；`agent`（智能体）升为一等聚合维度，进入 `daily_usage_rollups` 与 `session_model_stats` 主键——否则事件清理后智能体维度的历史统计永久不可得。
 
 ## 全局类型约定（硬约束）
 
@@ -22,8 +23,9 @@ PRAGMA synchronous  = NORMAL;      -- WAL 标配：fsync 降到 checkpoint。本
 PRAGMA busy_timeout = 5000;        -- 三端并存时读端不应直接吃 SQLITE_BUSY
 PRAGMA temp_store   = MEMORY;
 PRAGMA mmap_size    = 268435456;   -- 256 MB
-PRAGMA cache_size   = -16000;      -- 16 MB。注：4–5 倍提升的实测出自 Bun + bun:sqlite 栈，
-                                   -- 须在 M0.5 spike ① 上按 rusqlite 重测并重新打戳（ADR-0001）
+PRAGMA cache_size   = -16000;      -- 16 MB。2026-08-04 spike ① 实测定稿：rusqlite/Windows 下
+                                   -- 与默认值统计不可区分（median 122 vs 136ms，约 40MB 集
+                                   -- 疑被 OS 文件缓存吞差）；维持——无害且超缓存数据集可能显益
 ```
 
 ## DDL
@@ -48,8 +50,10 @@ CREATE TABLE schema_migrations (
 CREATE TABLE source_instances (
   id            TEXT PRIMARY KEY,         -- 稳定 ID = UNIQUE 四元组的确定性哈希
                                           -- （兜底 UNIQUE 中 account 为 NULL 时不去重的 SQL 语义）
-  source        TEXT NOT NULL CHECK (source IN
-                  ('claude-code','codex','opencode','gemini-cli','copilot','cursor')),
+  source        TEXT NOT NULL              -- 开放源标识（ADR-0018）：kebab-case，adapter 声明即注册，
+                CHECK (source <> ''        -- 新源零迁移；格式约束替代封闭枚举，拼写保护在 Rust newtype
+                       AND source NOT GLOB '*[^a-z0-9-]*'
+                       AND source NOT GLOB '-*' AND source NOT GLOB '*-'),
   account       TEXT,                     -- 账号标识；NULL = 单账号/未知
   machine       TEXT NOT NULL,
   data_root     TEXT NOT NULL,            -- 源数据根（规范化路径 / API 端点 base）
@@ -169,7 +173,8 @@ CREATE TABLE conflict_observations (
   source_instance_id TEXT NOT NULL,
   event_key        TEXT NOT NULL,
   conflict_kind    TEXT NOT NULL CHECK (conflict_kind IN
-                     ('same-position-diff-payload','cross-stream-diff-payload','unresolved-semantics')),
+                     ('same-position-diff-payload','cross-stream-diff-payload',
+                      'normalizer-divergence','unresolved-semantics')),
   existing_origin_stream      TEXT,
   existing_stream_generation  INTEGER,
   existing_source_position    TEXT,
@@ -222,6 +227,7 @@ CREATE TABLE session_model_stats (
   source_instance_id TEXT NOT NULL,
   session_key        TEXT NOT NULL,
   model              TEXT NOT NULL DEFAULT '',        -- 派生表内部键：'' = 模型未知
+  agent              TEXT NOT NULL DEFAULT '',        -- 智能体维度（ADR-0018）：'' = 无
   event_count        INTEGER NOT NULL DEFAULT 0,
   tokens_input           INTEGER NOT NULL DEFAULT 0,
   tokens_output          INTEGER NOT NULL DEFAULT 0,
@@ -231,7 +237,7 @@ CREATE TABLE session_model_stats (
   tokens_reasoning       INTEGER NOT NULL DEFAULT 0,
   cost_native_micro_usd   INTEGER,
   cost_computed_micro_usd INTEGER,
-  PRIMARY KEY (source_instance_id, session_key, model),
+  PRIMARY KEY (source_instance_id, session_key, model, agent),
   FOREIGN KEY (source_instance_id, session_key)
     REFERENCES sessions (source_instance_id, session_key) ON DELETE CASCADE
 ) STRICT;
@@ -252,7 +258,10 @@ CREATE TABLE tool_calls (
   PRIMARY KEY (source_instance_id, event_key, child_id),
   FOREIGN KEY (source_instance_id, event_key)
     REFERENCES usage_events (source_instance_id, event_key) ON DELETE CASCADE
-) STRICT;
+) STRICT, WITHOUT ROWID;
+-- WITHOUT ROWID：2026-08-04 spike ① 实测采纳（插入 1.6×、按事件查询 27%）；
+-- event_charges 为孪生结构同批采纳；session_model_stats/watermarks 形态
+-- 与访问不同、未实测不动（数据门签核 ①-b）
 
 -- ============================================================
 -- event_charges：非 token 计费子表。整集合替换规则同 tool_calls。
@@ -270,7 +279,7 @@ CREATE TABLE event_charges (
   PRIMARY KEY (source_instance_id, event_key, kind),
   FOREIGN KEY (source_instance_id, event_key)
     REFERENCES usage_events (source_instance_id, event_key) ON DELETE CASCADE
-) STRICT;
+) STRICT, WITHOUT ROWID;
 
 -- ============================================================
 -- pending_messages：未定稿消息队列。职责：流式/中断轮次的定稿
@@ -302,7 +311,9 @@ CREATE TABLE ingest_errors (
   stream_key   TEXT NOT NULL,             -- 出错流（同 watermarks.stream_key 口径）
   source_position TEXT NOT NULL DEFAULT '',  -- '' = 位置不适用（NOT NULL 保证 UNIQUE 去重计数生效）
   error_code   TEXT NOT NULL,             -- 'json-parse' / 'schema-mismatch' / 'unresolved-mapping'
-                                          -- / 'unverified-schema'（ADR-0014）/ …
+                                          -- / 'unverified-schema'（ADR-0014）
+                                          -- / 'pruned-key-reobserved'（ADR-0002 二轮修订：
+                                          --   生命周期边界可见性）/ …
   detail_key   TEXT NOT NULL DEFAULT '',  -- 错误码的补充键，如未验证格式的版本标识
   payload_hash TEXT,
   payload_len  INTEGER,
@@ -406,6 +417,8 @@ CREATE TABLE daily_usage_rollups (
   utc_offset_minutes     INTEGER NOT NULL,   -- 该日该时区的偏移，便于无 tz 库时校验
   source_instance_id     TEXT NOT NULL REFERENCES source_instances(id),
   model                  TEXT NOT NULL DEFAULT '',   -- '' = 模型未知
+  agent                  TEXT NOT NULL DEFAULT '',   -- 智能体维度（ADR-0018）：'' = 无；
+                                                     -- 总量 = 对本列求和，细分 = 按本列分组
   project_key            TEXT NOT NULL DEFAULT '',
   tokens_input           INTEGER NOT NULL DEFAULT 0,
   tokens_output          INTEGER NOT NULL DEFAULT 0,
@@ -418,7 +431,7 @@ CREATE TABLE daily_usage_rollups (
   event_count            INTEGER NOT NULL DEFAULT 0,
   rollup_version         INTEGER NOT NULL DEFAULT 1, -- 聚合逻辑版本；变更后窗口内重建、窗口外定格可见
   frozen_at              INTEGER,                    -- 非空 = 支撑事件已清理，本行不再重建
-  PRIMARY KEY (day, tz, source_instance_id, model, project_key)
+  PRIMARY KEY (day, tz, source_instance_id, model, agent, project_key)
 ) STRICT;
 
 -- ============================================================
@@ -462,7 +475,7 @@ CREATE INDEX idx_rollup_source_day ON daily_usage_rollups (source_instance_id, d
 ## 备注
 
 - **集合替换规则**：`tool_calls` / `event_charges` 不做行级 upsert——事件变更时在同事务内「按事件身份整集合删除 → 插入新集合」（ADR-0002 事务边界）。
-- **观测层与重建**：fold 的输入是 `usage_observations`，输出是 `usage_events` 加两张子表；`conflict_observations` 同为 fold 的输出（可重建）。「重建」property test = 清空投影/子表/派生表后按 fold 重放，**适用域为观测保留窗口内**（ADR-0011）。
+- **观测层与重建**：fold 的输入是 `usage_observations`，输出是 `usage_events` 加两张子表；`conflict_observations` 同为 fold 的输出（可重建）。冲突是**集合历史性质**——当前终态一致不消除既有冲突行（ADR-0002 二轮修订 1）。「重建」property test = **真实清空**投影/子表/冲突表/派生表后按 fold 重放，**适用域为观测保留窗口内**（ADR-0011）。收敛比较域 = 全部逻辑列，**排除代理自增 `id` 与 `sqlite_sequence`**（代理 id 禁止任何逻辑依赖——ADR-0002 二轮修订 3，测试排除项与该条一字对应）。
 - **派生表重建**：`sessions` / `session_model_stats` 在投影窗口内可由 `usage_events`（`status='counted'`）重建；`dirty_since` 是持久 dirty 队列，崩溃恢复先清队列再服务查询。空会话（重算后 `event_count=0`）直接 DELETE。
 - **进程所有权不落表**：daemon 所有权由 `<data_dir>/tokly/daemon.lock` 的 OS 咨询锁承担（[ADR-0012](adr/0012-进程与本地服务.md)），进程崩溃时内核自动释放——不需要租约表、心跳与超时判据。
 - **`WITHOUT ROWID` 的评估**：`tool_calls` / `event_charges` / `session_model_stats` / `watermarks` 是窄表且用复合文本 PK，改 `WITHOUT ROWID` 可省一次索引查找与一份索引空间；`usage_events` 行较宽，需按实际行宽与页大小实测后再定。**在 M0.5 spike ① 上一并实测，不先猜。**
@@ -486,3 +499,6 @@ CREATE INDEX idx_rollup_source_day ON daily_usage_rollups (source_instance_id, d
 | `computed_cost_status` 无法表达"价目回溯不可得" | 首装前历史按最早快照计价却标成正常计算值 | 增 `priced-at-snapshot`（ADR-0015） |
 | 无按时间剪枝的索引 | 保留期清理的 `WHERE timestamp < X` 受 `(status,timestamp)` 前导列限制 | 加 `idx_events_ts` |
 | `sessions` 汇总无法表达部分口径 | native/computed 只有部分事件有值时，汇总被当完整账目读 | 增 `has_partial_cost` |
+| `source` 封闭枚举 CHECK | 源集合是开放的（持续扩增），每加源一次迁移；封闭枚举在 core 违反源无关边界 | 格式约束替代枚举（ADR-0018） |
+| 聚合层无 `agent` 维度 | 事件清理后"按智能体 × 模型"的历史统计永久不可得 | 两张聚合表增 agent 入主键（ADR-0018） |
+| 窄表 WITHOUT ROWID 待实测（2026-08-04 关闭） | — | spike ① 实测：tool_calls 插入 1.6× / 查询 27% → tool_calls + 孪生 event_charges 采纳；cache_size 实测不可区分 → 维持（数据门签核 ①） |

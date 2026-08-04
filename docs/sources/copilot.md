@@ -42,7 +42,7 @@ session-state 的 events.jsonl 由 CLI **默认写入**，无需任何开关（C
 | input | `gen_ai.usage.input_tokens` —— 包含关系按「token 语义裁决」节判定；净 input 公式见该节 |
 | output | `gen_ai.usage.output_tokens` |
 | cacheRead | `gen_ai.usage.cache_read.input_tokens` |
-| cacheWrite | `gen_ai.usage.cache_write.input_tokens`，回退 `gen_ai.usage.cache_creation.input_tokens` |
+| cacheWrite5m | `gen_ai.usage.cache_write.input_tokens`，回退 `gen_ai.usage.cache_creation.input_tokens`（无 5m/1h 分档概念，全部计入 cacheWrite5m，`cacheWrite1h` 恒 0，ADR-0002） |
 | reasoning | `gen_ai.usage.reasoning.output_tokens`，回退 `gen_ai.usage.reasoning_tokens` |
 | total（包含关系判别用） | `gen_ai.usage.total_tokens`，回退 `gen_ai.usage.total.token_count` |
 
@@ -112,17 +112,18 @@ GET /orgs/{org}/copilot/metrics/reports/{organization|users|repos|user-teams}-1-
 |---|---|---|---|---|
 | source | `"copilot"` | `"copilot"` | `"copilot"` | `"copilot"`（二轮审查 §1 交叉一致性：api/metrics **降为 channel**，不再作独立 source） |
 | channel / status | `channel='otel'` | `channel='session-state'` | `channel='api'` | `channel='metrics'`；四通道并存时按用户配置的唯一权威通道计 `status='counted'`，非权威通道入库但 `status='excluded'`（见「去重与已知坑」权威裁决条） |
-| granularity | `'event'` | `'session'`（shutdown 为会话级快照） | `'month'`（`periodEnd` = 月末，带 day 参数时 `'day'`） | `'day'`（`periodEnd` = 当日 24:00Z） |
+| granularity | `'event'` | `'session'`（shutdown 为会话级快照）；`periodEnd` = shutdown 时刻（覆盖期终点，与 C/D 通道月末/24:00Z 同构——2026-08-04 裁决显式化） | `'month'`（`periodEnd` = 月末，带 day 参数时 `'day'`） | `'day'`（`periodEnd` = 当日 24:00Z） |
 | **eventKey（去重键）** | chat span: `{traceId}:{spanId}`；log: `log:{traceId}:{spanId}`；agent-turn: `agent-turn:{traceId}:{turn.index}`；缺 id 时退化 `span:{sessionId}:{tsMs}:{行号}` 并标 `identityQuality='weak'` | `shutdown:{sessionId}:{model}`（幂等，重扫天然去重） | `api:premium:{user}:{period}:{model}:{sku}` | `metrics:{user_login}:{day}:{scope}`（scope=cli/app/feature） |
 | revision | `originStream` = 文件相对路径；`sourcePosition` = 字节偏移 | 同左 | `originStream` = 端点+周期；`sourcePosition` = 拉取页序（整周期 staging 发布后才有意义，见增量摄取节） | 同 C |
 | sessionKey | 属性优先链（见上），兜底 traceId | 目录 uuid（即 sessionId） | null | null |
 | parentSessionKey | 无（`--resume` 复用同一 session 目录/会话 id） | 同左 | — | — |
-| projectKey / projectLabel | **不可得** | `session.start` 的 `context.cwd` / `repository` | null | null |
+| projectKey / projectLabel | **不可得** | label = `session.start` 的 `context.cwd` 原始值（2026-08-04 裁决定稿：label 与 projectKey = normalize(cwd) 必须同源，展示与聚合不得分裂）；`repository` **不映射**（如有价值属未来 detail，另议）；key 由 core 统一归一化 | null | null |
 | timestamp | `endTime` 优先，多形态自适应解析为 epoch_ms；兜底文件 mtime | 事件 `timestamp`（shutdown 时刻，非请求时刻） | 周期起点（月/日 00:00Z） | `day` 00:00Z |
 | model | `gen_ai.response.model`（需去内部后缀归一化） | modelMetrics 的键名 | `model` 字段 | `totals_by_model_feature[].model`（常为空数组） |
+| agent | `''`（四通道均无智能体/子代理概念，见「agent 归一化规则」节，ADR-0018） | 同左 | 同左 | 同左 |
 | tokens.input | **净 input 公式**（见「token 语义裁决」节） | 按版本表（同节） | **不可得**（写 0 + `tokenCoverage` 标注全维度不可得） | `prompt_tokens_sum`（日总和） |
 | tokens.output | `output_tokens`（reasoning 包含关系按版本表） | 同左 | 不可得 | `output_tokens_sum` |
-| tokens.cacheRead / cacheWrite5m | clamp 公式（同节；无 5m/1h 分档 → 默认 5m 档） | 同左 | 不可得 | 不可得（写 0 + `tokenCoverage` 标注） |
+| tokens.cacheRead / cacheWrite5m | clamp 公式（同节；无 5m/1h 分档 → 全部计入 cacheWrite5m（默认档），`cacheWrite1h` 恒 0，ADR-0002） | 同左 | 不可得 | 不可得（写 0 + `tokenCoverage` 标注） |
 | tokens.reasoning | `reasoning.output_tokens` | `reasoningTokens` | 不可得 | 不可得 |
 | tokenQuality | `'native'` | `'native'` | `'native'`（无 token 维度） | `'native'` |
 | costNativeMicroUSD | null | null（`requests.cost` 是 premium-request 数、`totalNanoAiu` 是 AIU——**数量口径进 `event_charges`，不折算进成本列**） | `round(netAmount × 1e6)` | null（`ai_credits_used` → `event_charges`） |
@@ -138,7 +139,7 @@ Copilot 两通道的 **cache write 与 input 的互斥性、reasoning 与 output
 1. **格式版本判别**：OTEL 通道按导出器格式版本（hrTime 形态 / 属性键集，落 `rawSchema`）；session-state 通道按 `session.start` 的 `copilotVersion` 分段。
 2. **版本表固定语义**：adapter 内置版本表逐格固定 `(通道, 格式版本) × (cache write 是否 ⊂ input, reasoning 是否 ⊂ output)`；每格必须附真实样本验证证据（golden fixtures）。
 3. **防御性净 input 公式**（版本表确认"cache 两档 ⊂ input"的版本）：与 Codex 同款顺序 clamp——`cacheRead = clamp(cache_read, 0, input)`；`cacheWrite5m = clamp(cache_write, 0, input − cacheRead)`；`净 input = input − cacheRead − cacheWrite5m`。确认"互斥"的版本则直接取值不 clamp。
-4. **fail-visible**：版本表未覆盖的格式版本、或样本与版本表矛盾 → 事件 `status='excluded'` + `excludeReason='unresolved-token-semantics'`，记 `conflict_observations`，`rawUsage` 留存。**未经验证前不得假设任何包含关系。**
+4. **fail-visible**：版本表未覆盖的格式版本、或样本与版本表矛盾 → 事件 `status='excluded'` + `excludeReason='unresolved-token-semantics'`，记 `conflict_observations`，`rawUsage` 留存。**未经验证前不得假设任何包含关系。** 排除行 `tokenQuality` 仍为 `'native'`（excluded 是状态不是数据质量，2026-08-04 裁决补句；unverified-schema 排除行同）。
 
 ## 增量摄取策略
 
@@ -161,6 +162,16 @@ Copilot 两通道的 **cache write 与 input 的互斥性、reasoning 与 output
 - **时间戳多形态**：OTEL 导出器版本差异导致 `[sec,nanos]` 数组、纳秒/微秒/毫秒/秒标量并存，按数量级判断（≥1e17 纳秒，≥1e14 微秒，≥1e11 毫秒，否则秒）。
 - **企业报告限制**：下载链接限时过期（staging 流程须先下完全部文件再发布）；user 级端点不含组织代管许可的用量；报告字段可能随版本增删（官方注明 schema 为示例性质）。
 
+## 已验证格式版本集合（2026-08-03）
+
+- **当前为空集**：本文档撰写时调研机器无真实 Copilot CLI 会话（见文首「本机验证说明」），四通道均未拿真实样本验证——OTEL / session-state 的格式版本表（见「token 语义裁决」节）尚无一格附真实样本证据；个人 API / 企业报告的字段结构取自官方 OpenAPI 描述，同样未经真实响应验证。**M0.5 冻结门前，四通道的已验证 `raw_schema` 版本集合均为空。**
+- **adapter 开工时的强制动作**：每确认一个真实样本（OTEL 导出器格式版本、`copilotVersion` 分段、或某次真实 API 响应），在此追加一行记录版本标识与验证日期，并同批补 golden fixtures——与「token 语义裁决」版本表同步冻结（ADR-0014）。
+- **集合外版本的处置（ADR-0014）**：版本表补齐前，任何进入摄取管线的真实数据一律按集合外处置——事件按可解析部分入库、`status='excluded'`、`exclude_reason='unverified-schema'`，并记 `ingest_errors`（错误码 `unverified-schema`）留证；不得凭 ccusage 源码或官方文档字段描述直接判定为"已验证"。
+
+## agent 归一化规则（ADR-0018，2026-08-03）
+
+Copilot 四通道均无智能体/子代理（sub-agent）概念：OTEL 记录中的 "agent turn log"（`event.name == "copilot_chat.agent.turn"`）与 "agent summary span"（`gen_ai.operation.name == "invoke_agent"`）指的是同一请求的**记录类型**（见「格式详解 A」四类重复记录去重规则），不是可选择、可归一化的子代理身份，不构成 ADR-0018 定义的智能体维度。四通道 `agent` 恒 `''`。
+
 ## 能力声明
 
 | 能力 | CLI OTEL | CLI session-state | 个人 API | 企业报告 |
@@ -168,6 +179,7 @@ Copilot 两通道的 **cache write 与 input 的互斥性、reasoning 与 output
 | 五类 token | ✅（经版本表裁决） | ✅（经版本表裁决） | ❌ | 部分（仅 prompt/output 日总和） |
 | 会话归属 | ✅ | ✅ | ❌ | ❌ |
 | 项目归属 | ❌ | ✅（cwd/repo） | ❌ | ❌ |
+| 智能体维度（agent） | 恒 `''` | 恒 `''` | 恒 `''` | 恒 `''` |
 | 事件级时间戳 | ✅ | ❌（仅结算点） | ❌（月/日粒度） | ❌（日粒度） |
 | 成本 | computed（LiteLLM） | computed + 计费数量（premium-req 数 / nano-AIU，进 event_charges） | **native**（计费口径 USD，`nativeCostKind` 标注） | ❌（`ai_credits_used` 进 event_charges） |
 | 历史深度 | 文件留存期 | 文件留存期 | 24 个月 | 1 年（且自 2025-10-10 起） |
@@ -184,3 +196,4 @@ Copilot 两通道的 **cache write 与 input 的互斥性、reasoning 与 output
 - [ccusage copilot adapter 源码（parser.rs/paths.rs，OTEL 字段与去重权威实现）](https://github.com/ccusage/ccusage/tree/main/rust/adapters/copilot)
 - [ccusage issue #1174（events.jsonl 读取提案，session.shutdown/compaction_complete 字段与 nano-AIU 口径）](https://github.com/ccusage/ccusage/issues/1174)
 - [ccusage issue #1169（OTEL 默认关闭导致无数据）](https://github.com/ccusage/ccusage/issues/1169)
+

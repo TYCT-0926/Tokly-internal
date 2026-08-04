@@ -68,19 +68,20 @@ bubble（每条消息）关键字段：
 | --- | --- |
 | `source` | `"cursor"` |
 | `sourceInstanceId` | 每个 `state.vscdb` 主库一实例（`dataRoot` = 库文件规范化路径） |
-| `eventKey`（去重键） | bubble 键第三段 `bubbleId`（全局唯一）；稳妥写法用全键 `bubbleId:<composerId>:<bubbleId>` |
+| `eventKey`（去重键） | **全键 `bubbleId:<composerId>:<bubbleId>`（单值定契约，2026-08-04 阶段三B 复审裁决）**——`bubbleId` 的全局唯一性是上游未承诺的观察，一旦被推翻即静默跨会话撞键（事件身份不可逆）；全键携带 composer 作用域，代价只是键长。原文"裸 ID / 稳妥写法用全键"的双读法已删——**映射表任何一格出现两个可选值即契约缺陷**，spec 是唯一施工权威，不许让 fixtures 代做设计决定 |
 | `revision` | `originStream` = 库内表名 `'cursorDiskKV'`；`streamGeneration` = **DB generation**（见增量摄取节）；`sourcePosition` = 行 rowid。**rowid 只在同 generation 内可比**（ADR-0002） |
 | `payloadHash` | bubble value JSON 的 sha256 |
 | `sessionKey` | 键第二段 `composerId` |
 | `parentSessionKey` | `isSubagent=1` 时，由父 `composerData.subagentComposerIds` 反查父 composerId；查不到则 null |
-| `projectKey` / `projectLabel` | label = `composerHeaders.value.workspaceIdentifier`；缺失时经 `workspaceStorage/*/workspace.json` 的 folder 反查；再缺省 null |
+| `projectKey` / `projectLabel` | label = `composerHeaders.value.workspaceIdentifier`；缺失时经 `workspaceStorage/*/workspace.json` 的 folder 反查；再缺省 null；key 由 core 统一归一化 |
 | `timestamp` | `bubble.createdAt`（ISO 文本）解析为 epoch_ms；缺失退 `composerHeaders.createdAt` |
 | `model` | `bubble.modelInfo.modelName` → `composerData.modelConfig.modelName` → `null`（auto 模式；ADR-0002 禁魔法值） |
+| `agent` | 恒 `''`（无智能体概念；子代理关系已由 `parentSessionKey` 表达，不重复进 agent 维度。细则见「agent 归一化规则」节，ADR-0018） |
 | `tokens.input` / `tokens.output` | **字符池按 role 分离（二轮审查 §1 矩阵，禁止同内容双算输入输出）**：`tokenCount` 非零 → native 直取。为零/缺失 → 估算 `ceil(chars/4)`，且**每条 bubble 只贡献一个方向的字符池**：user 气泡（`type=1`）`text` → **input 池**；assistant 气泡（`type=2`）`text` + `allThinkingBlocks` + `toolResults` 文本总长 → **output 池**。assistant 的真实输入（上下文）本地不可得，input 只反映 user 可见输入；同一字符永不双向折算 |
 | `tokens.cacheRead` / `cacheWrite5m` / `cacheWrite1h` / `reasoning` | 本地无此粒度，**一律写 0 并用 `tokenCoverage` 标注不可得**（`['cache-read','cache-write','reasoning']`；估算行另加 `'input-low-coverage'`）——0 不冒充"已确认没有"（二轮审查 §1） |
 | `tokenQuality` | `tokenCount` 非零行 `'native'`（仅老版本历史数据）；估算行 `'estimated'` |
 | 成本列 | `costNativeMicroUSD = null`；估算行 `pricingEligibility='disabled'`（用户显式开启「估算计价」时改 `'estimated-tokens'`）、`displayPolicy='estimate-only'`；native 历史行 `'standard'` / `'computed-only'` |
-| `toolCall` | `toolFormerData.name`/`toolResults` 提取工具名与参数摘要，落 `tool_calls` 子表；无则 null |
+| `toolCall` | `toolFormerData.name`/`toolResults` 提取工具名与参数摘要，落 `tool_calls` 子表（以事件身份关联，整集合替换语义，ADR-0002）；无工具调用时不产生子表行 |
 
 ## 增量摄取策略
 
@@ -99,6 +100,20 @@ bubble（每条消息）关键字段：
 - **schema 漂移**：无官方文档；`composerHeaders` 表、`agentKv` 均为近期版本新增；加密字段（`blobEncryptionKey`、二进制 agentKv blob）随时可能扩大。adapter 必须对未知键/缺失字段宽容（skip，不 error）。
 - `type=1`（user）气泡留存不全（本机 user:assistant ≈ 1:43），输入估算覆盖率低——input token 估算比 output 更不可靠，`tokenCoverage` 的 `'input-low-coverage'` 标注必须落库，UI 如实降级。
 
+## 已验证格式版本集合（2026-08-03）
+
+- **已验证集合**：Cursor 3.x，`state.vscdb` 三表结构（`ItemTable` / `cursorDiskKV` / `composerHeaders`，见「格式详解」）及本文档所列 bubble / composerHeaders 字段形态。本机验证：Windows，2026-08，`state.vscdb` 231MB，backup API 副本 + `immutable=1` 只读查询；`cursorDiskKV` 22361 行（`agentKv` 14334 / `bubbleId` 7842 / `composerData` 131），`composerHeaders` 131 会话（104 为 `isSubagent`）。
+- **集合外的已知结构分叉，触发 unverified-schema（ADR-0014）**：仅有 workspace 级 `composerData`、全局库缺失 `composerHeaders` 表的旧版布局（见「数据位置」"旧版本的主索引"）；以及 `~/.cursor/chats/*/store.db`（`meta`+`blobs` 表，本机未见，暂不作主源）。遇到 `composerHeaders` 表缺失或改用后者存储栈的库：事件按可解析部分入库、`status='excluded'`、`exclude_reason='unverified-schema'`，记 `ingest_errors`，不按已验证形态强行解析。
+- 集合演进：每验证一个新版本/存储栈，本节与 golden fixtures 同批更新（ADR-0014）。
+
+## agent 归一化规则（ADR-0018，2026-08-03）
+
+Cursor 无智能体/模式概念：bubble 与 composerData 均无类似 OpenCode `agent`/`mode` 或 Claude Code 子代理 `agentType` 的命名智能体标识；唯一相关信号 `composerHeaders.isSubagent`（布尔）已由 `sessionKey`/`parentSessionKey`（`composerId`/`subagentComposerIds`）表达会话层级关系，不重复进 `agent` 维度。
+
+| 事件来源 | `agent` 取值 |
+| --- | --- |
+| 全部事件 | 恒 `''`（无智能体概念，ADR-0018） |
+
 ## 能力声明
 
 | 字段 | 能力 |
@@ -109,6 +124,7 @@ bubble（每条消息）关键字段：
 | input/output tokens | ⚠️ 老版本部分 native；Cursor 3.x 全部为估算（chars/4，±50%，role 分离字符池） |
 | cacheRead/cacheWrite/reasoning | ❌ 无（写 0 + tokenCoverage 标注） |
 | 工具调用 | ✅ bubble 内 toolFormerData/toolResults（含批准/拒绝结果） |
+| 智能体维度（agent） | ❌ 恒 `''`（无智能体概念，子代理关系由 `parentSessionKey` 表达，见「agent 归一化规则」节） |
 | 成本 | ❌ 无原生；默认 `costNativeMicroUSD=null` 且 `pricingEligibility='disabled'`，仅在用户显式开启「估算计价」时按公开单价×估算 tokens 计算并在 UI 显著标注估算（`displayPolicy='estimate-only'`） |
 | 历史深度 | 未见 TTL 清理证据；本机样本覆盖约 3 个月、131 会话/7.8k 消息，社区报告可回溯一年以上 |
 
@@ -124,3 +140,4 @@ bubble（每条消息）关键字段：
 - [Contrails: fsnotify+debounce 监听 state.vscdb 的工程实践](https://github.com/ThreePalmTrees/Contrails)
 
 > 本机验证：Windows，Cursor 3.x，`state.vscdb` 231MB，backup API 副本+`immutable=1` 只读查询（2026-08）。实测 cursorDiskKV 22361 行（agentKv 14334 / bubbleId 7842 / composerData 131），`tokenCount` 全 0、`modelInfo.modelName` 全 null、`composerHeaders` 131 会话中 104 为 isSubagent。示例值均为虚构。
+

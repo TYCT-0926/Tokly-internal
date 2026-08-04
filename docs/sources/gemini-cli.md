@@ -49,7 +49,8 @@
     "cached": 10240,          // cachedContentTokenCount（input 的子集）
     "thoughts": 158,          // thoughtsTokenCount（可选）
     "tool": 96,               // toolUsePromptTokenCount（可选）
-    "total": 23146            // totalTokenCount（用于包含关系判别）
+    "total": 13046            // totalTokenCount（用于包含关系判别；2026-08-04 修正为自洽示例值——
+                              // 本例 total == input+output+thoughts+tool，即 inclusive 分支成立）
   }
 }
 ```
@@ -57,6 +58,8 @@
 口径要点（ccusage Rust adapter 实测口径）：Gemini API 对 `cached`/`tool` 是否计入 `input` 的语义在版本间不一致，**用 `total` 反推**：设 `inclusive = input + output + thoughts + tool`、`exclusive = inclusive + cached`，若 `cached > 0` 且 `total == inclusive != exclusive`，则 `input` 已含 `cached` → 未缓存输入 = `input - min(input, cached)`；否则视 `input` 与 `cached` 互斥。`tool` 计入 input，`thoughts` 计价时并入 output。
 
 **失败策略（二轮审查 §1 矩阵：异常路径必须显式）**：`total` 缺失、或 inclusive/exclusive 两种方程都不成立时，**不默认任何缓存语义**——事件 `status='excluded'` + `excludeReason='unresolved-cache-semantics'`，`rawUsage` 留存，记 `conflict_observations`（kind=`unresolved-semantics`），fail-visible；禁止硬猜互斥或包含。
+
+**counted 行不存 `rawUsage`**（2026-08-04 数据门裁决背书）：uncached+tool 并入 input、thoughts 并入 output 的折叠就留存而言按**非有损**处理——信息性拆分由 `cacheRead`/`reasoning`/`tokenCoverage` 字段承载；`rawUsage` 仅在失败策略路径留存。
 
 **无原生成本字段**，成本必须由定价表计算（免费层 Code Assist 用户同样按表估算仅供参考）。
 
@@ -75,12 +78,13 @@
 | `projectKey` / `projectLabel` | label = `.project_root` 标记 / `projects.json` 反查得到的项目路径；key 由 core 统一归一化 |
 | `timestamp` | 消息行 `timestamp` 解析为 epoch_ms |
 | `model` | 消息行 `model`；缺省时回退本文件内上一条 gemini 消息的 model，再兜底 `null`（ADR-0002 禁魔法值） |
+| `agent` | 头部 `kind=="subagent"` → `'subagent'`；`kind=="main"` 或缺省（旧版整体 `.json`、无 `kind` 头部行） → `''`。细则见「agent 归一化规则」节（ADR-0018） |
 | `tokens.input` | 拆分后的未缓存输入 + `tool`（见口径要点与失败策略；净值，符合 ADR-0002 口径不变量） |
 | `tokens.output` | `tokens.output + tokens.thoughts`——output 恒含 reasoning（口径不变量，映射时并入） |
 | `tokens.cacheRead` | `tokens.cached` |
 | `tokens.cacheWrite5m` / `cacheWrite1h` | 0（Gemini 无缓存写入计费维度）；`tokenCoverage` 标注 `'cache-write'` 维度不存在 |
 | `tokens.reasoning` | `tokens.thoughts ?? 0`（信息性子集，已含在 output 内，不重复计价） |
-| `tokenQuality` | `'native'` |
+| `tokenQuality` | `'native'`——含 `unresolved-cache-semantics`/`unverified-schema` 排除行（excluded 是状态不是数据质量，2026-08-04 裁决补句） |
 | 成本列 | `costNativeMicroUSD = null`；`pricingEligibility='standard'`；`displayPolicy='computed-only'` |
 | `toolCall` | 可选：gemini 消息 `toolCalls[]` 的 `name`/`status`，落 `tool_calls` 子表（事件身份关联），不再发零 token 独立事件（ADR-0002） |
 
@@ -106,6 +110,21 @@
 6. **IDE 内嵌会话**：VS Code 伴侣（a2a-server）产出的会话 `sessionId` 为字面量 `"a2a-server"`（本机实测），同项目多文件同 sessionId——此时 eventKey（消息 uuid）仍是唯一防线，sessionKey 仅作展示分组。
 7. **版本差异**：旧版整体 `.json`、新版 JSONL 操作日志、hash/slug 两代目录并存；坚持「白名单只取 `type=="gemini"` 且 `tokens` 为对象的记录 + 可选字段兜底」，不为特定版本写分支。
 
+## 已验证格式版本集合（2026-08-03）
+
+- **已验证集合（结构形态定义）**：chats JSONL 操作日志——头部 `{sessionId, projectHash, startTime, lastUpdated, kind}` + 消息行白名单（`type=="gemini"` 且 `tokens` 为对象）+ `$set`/`$rewindTo` 控制行；projectId hash 代（旧）与 slug 代（新，约 0.8+）两代目录布局。实测覆盖：本机 Windows `~/.gemini` 4 个项目目录、7 个 chats 文件只读抽样，hash/slug 两代并存、projectHash 大小写敏感行为均已实测（2026-08-03）。
+- **未实机验证、仅凭上游 main 分支源码 + ccusage Rust 实现佐证**（视为待补 golden fixtures，不计入"已验证"）：gemini 消息行 `tokens` 五分类字段的真实取值（本机样本会话过短，无 gemini 响应行）、旧版整体 `.json` 文件的实机解析、OTEL `telemetry.outfile` 被动通道格式（本机 `settings.json` 未开启 telemetry）。
+- **本源无独立格式版本字段**：消息行不含格式版本标识，`rawSchema` 留空，仅有损映射时按 ADR-0002 存原始 JSON 兜底。
+- **unverified-schema 触发条件（结构性，ADR-0014）**：头部行缺失 `kind`、或消息行 `type=="gemini"` 且 `tokens` 存在但**不是对象**、或 `tokens` 内已知字段出现非整数类型——事件按可解析部分入库，`status='excluded'`、`excludeReason='unverified-schema'`，记 `ingest_errors`（错误码 `unverified-schema`）。`tokens` 完全缺失的 gemini 行按既有白名单规则跳过，不属格式演进信号；input/cached 包含关系判别失败已有专属 `excludeReason='unresolved-cache-semantics'`（见「口径要点」「失败策略」），不与本条混淆。
+- 集合演进：每支持一个新结构形态（如 OTEL 被动通道正式纳入摄取、旧版 `.json` 补齐实机验证），本节与 golden fixtures 同批更新。
+
+## agent 归一化规则（ADR-0018，2026-08-03）
+
+| 事件来源 | `agent` 取值 |
+|---|---|
+| main 会话（头部 `kind=="main"`，含无 `kind` 头部行的旧版会话 / 旧版整体 `.json`） | `''`（无智能体） |
+| 子代理会话（头部 `kind=="subagent"`，`chats/<parentSessionId>/<subagentSessionId>.jsonl`） | `'subagent'`（显式占位——上游未提供比"是否子代理"更细的智能体类型/名称字段，无法精细化区分；不用 `''`，以免子代理用量被静默并入主会话桶，重蹈 ccusage issue #313 的教训） |
+
 ## 能力声明
 
 | 能力 | 支持 | 备注 |
@@ -116,6 +135,7 @@
 | 时间戳 / 项目 / 会话归属 | ✅ | 消息级 timestamp；项目靠 `.project_root`/`projects.json` |
 | 工具调用 | ✅ | gemini 消息 `toolCalls[]` |
 | 子代理用量 | ✅ | `chats/<parentSessionId>/` 子目录 |
+| 智能体维度（agent） | ✅ | 头部 `kind` 二值归一化，规则见「agent 归一化规则」节；无更细粒度类型/名称字段 |
 | 成本 | computed | 无原生字段，定价表计算；免费层用户仅供参考 |
 | 历史深度 | 受源限制（脆弱） | tmp 目录：无自动清理但会随手动删除/不可恢复会话清除/迁移而变动 |
 | `/stats` 命令 | ❌ 不可被动利用 | 纯内存会话统计（`context.session.stats`），不落盘，进程退出即失 |
@@ -137,3 +157,4 @@
 - [LiteLLM 价格表（computed 成本来源）](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json)
 
 > 本文档格式细节经本机只读抽样验证（Windows，`~/.gemini`：4 个项目目录、7 个 chats 文件，hash 与 slug 两代布局并存，projectHash 大小写敏感已实测）+ 上游 main 分支源码核对；本机样本会话过短未含 gemini 响应行，tokens 结构以源码与 ccusage 实现双重佐证；示例均为虚构脱敏数据。
+
