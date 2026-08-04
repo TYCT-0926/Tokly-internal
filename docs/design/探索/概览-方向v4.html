@@ -1,0 +1,361 @@
+<meta charset="utf-8">
+<title>Tokly 概览 · 方向 v4 · 黑色玻璃上的仪器</title>
+<style>
+:root{
+  --canvas:#100D0B; --raised:#171310; --fg:#EDE6E3; --fg2:#B2ADA9; --muted:#8A8582; --faint:#544F4B;
+  --hair:rgb(237 230 227/.09); --glass:rgb(255 255 255/.05);
+  --accent:#E8A360;
+  /* 来源色族：色相=来源，明度=来源内模型阶 */
+  --cl1:#E8A360; --cl2:#C77F3C; --cl3:#F4C08A;      /* claude: sonnet/opus/haiku */
+  --oa1:#8FB573; --oa2:#6D9A55;                      /* openai: gpt-5.4 / sol */
+  --gm1:#6FA8C9; --gm2:#9CC3DB;                      /* gemini: pro / flash */
+  --cu1:#C98A8A; --oc1:#6FB5A5; --gray:#6B655F;
+  --grid:rgb(237 230 227/.06);
+  --ok:#7CBF80; --warn:#D4AF37; --err:#E8837B;
+  --mono:"Maple Mono","Cascadia Mono",ui-monospace,monospace;
+  --sans:"Geist Sans",system-ui,"PingFang SC","Microsoft YaHei UI",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--canvas);color:var(--fg);font-family:var(--sans);font-size:13px;
+  -webkit-font-smoothing:antialiased;min-height:100vh;position:relative}
+/* 镜面层 · mirror.floor —— 页面地光 */
+body::after{content:"";position:fixed;inset:auto 0 0 0;height:46vh;pointer-events:none;z-index:0;
+  background:radial-gradient(58% 90% at 50% 100%, rgb(232 163 96/.09), transparent 62%)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.lbl{font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.wrap{padding:0 26px;position:relative;z-index:1}
+
+.top{height:46px;display:flex;align-items:center;gap:26px;padding:0 26px;border-bottom:1px solid var(--hair);
+  position:relative;z-index:2}
+.mark{font-size:13px;letter-spacing:.08em;color:var(--fg2);font-weight:600}.mark b{color:var(--accent)}
+nav{display:flex;gap:2px}
+nav a{padding:5px 11px;border-radius:6px;color:var(--muted);text-decoration:none;font-size:12.5px}
+nav a.on{color:var(--fg);background:rgb(237 230 227/.07)}
+.seg{margin-left:auto;display:flex;border:1px solid var(--hair);border-radius:6px;overflow:hidden}
+.seg button{background:none;border:0;color:var(--muted);font-size:12px;padding:5px 12px;font-family:var(--mono)}
+.seg .on{background:rgb(232 163 96/.15);color:var(--accent)}
+.pulse{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px rgb(124 191 128/.6)}
+.stat{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11.5px;font-family:var(--mono)}
+
+/* 英雄 + mirror.hero 倒影 */
+.hero{display:flex;align-items:flex-end;gap:34px;padding:30px 0 6px}
+.h-big{position:relative;display:flex;align-items:baseline}
+.h-cur{font-size:22px;color:var(--muted);font-family:var(--mono);align-self:flex-start;margin-top:8px}
+.h-val{font-size:56px;line-height:.9;font-family:var(--mono);font-variant-numeric:tabular-nums;
+  letter-spacing:-.03em;font-weight:500;
+  background:linear-gradient(180deg,#FFF3E6 0%,var(--fg) 45%,#C9BEB6 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.h-refl{position:absolute;top:99%;left:0;right:0;transform:scaleY(-1);opacity:.10;pointer-events:none;
+  -webkit-mask-image:linear-gradient(to top,black -20%,transparent 62%);
+  mask-image:linear-gradient(to top,black -20%,transparent 62%)}
+.h-sub{display:flex;gap:30px;padding-bottom:8px}
+.h-i .lbl{margin-bottom:5px}
+.h-i .v{font-size:19px;font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--fg2)}
+.h-right{margin-left:auto;text-align:right;padding-bottom:8px}
+.delta{font-family:var(--mono);font-size:14px;color:var(--accent)}
+.h-flow{font-size:11.5px;color:var(--faint);font-family:var(--mono);margin-top:6px}
+
+/* 全宽来源占比条 + 徽章行 */
+.srcband{padding:16px 0 20px;border-bottom:1px solid var(--hair)}
+.segbar{display:flex;height:7px;border-radius:4px;overflow:hidden;gap:2px}
+.segbar i{display:block;height:100%}
+.chips{display:flex;gap:26px;margin-top:11px}
+.chip{display:flex;align-items:baseline;gap:7px;font-family:var(--mono);font-size:12px}
+.chip .g{font-size:11px}
+.chip .n{color:var(--fg2)}
+.chip .p{color:var(--fg);font-variant-numeric:tabular-nums}
+.chip .c{color:var(--faint);font-size:10.5px}
+
+.band{padding:24px 0;border-bottom:1px solid var(--hair)}
+.band-h{display:flex;align-items:baseline;gap:12px;margin-bottom:14px}
+.band-h .note{margin-left:auto;font-size:11.5px;color:var(--faint);font-family:var(--mono)}
+
+/* 主图 + mirror.chart 倒影 */
+.chartwrap{position:relative}
+.chartrefl{transform:scaleY(-1);opacity:.07;height:56px;overflow:hidden;pointer-events:none;
+  -webkit-mask-image:linear-gradient(to top,black,transparent 85%);
+  mask-image:linear-gradient(to top,black,transparent 85%)}
+
+/* 配额 + 雷达 */
+.qgrid{display:grid;grid-template-columns:1fr 300px;gap:48px;align-items:start}
+.qrow{margin-bottom:17px}
+.q-h{display:flex;align-items:baseline;gap:8px;margin-bottom:7px}
+.q-n{font-size:12.5px;color:var(--fg2)}
+.q-pct{font-size:14px;font-family:var(--mono)}
+.q-r{margin-left:auto;font-size:11px;color:var(--faint);font-family:var(--mono)}
+.track{height:5px;border-radius:3px;background:rgb(237 230 227/.07);position:relative}
+.fill{height:100%;border-radius:3px}
+.tick{position:absolute;top:-4px;width:1.5px;height:13px;background:var(--fg2)}
+.tick.pace{opacity:.45;height:9px;top:-2px}
+.q-attr{margin-top:7px;display:flex;gap:18px;padding-left:2px}
+.qa{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+.qa i{display:inline-block;height:3px;border-radius:2px}
+.q-f{margin-top:6px;font-size:10.5px;font-family:var(--mono);color:var(--faint)}
+.q-f b{color:var(--err);font-weight:400}
+.radar-wrap{text-align:center}
+.radar-note{font-size:10.5px;color:var(--faint);font-family:var(--mono);margin-top:6px}
+
+/* 三栏 */
+.cols{display:grid;grid-template-columns:1fr 330px 360px;gap:42px;padding:24px 0;border-bottom:1px solid var(--hair)}
+.hm-grid{display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,10px);gap:2px}
+.hm-grid i{width:10px;height:10px;border-radius:2px;display:block}
+.hm-mo{position:relative;height:14px;margin-bottom:3px}
+.hm-mo span{position:absolute;font-size:9.5px;color:var(--muted);font-family:var(--mono)}
+.hm-foot{margin-top:12px;display:flex;align-items:center;font-size:11px;color:var(--muted);font-family:var(--mono)}
+.hm-foot .sp{margin-left:auto;display:flex;align-items:center;gap:3px;font-size:10px;color:var(--faint)}
+.hm-foot .sp i{width:9px;height:9px;border-radius:1.5px}
+.rows{display:flex;flex-direction:column;gap:11px}
+.row-t{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
+.row-t .dot{font-size:9px}
+.row-t .nm{font-size:12px;color:var(--fg2);font-family:var(--mono)}
+.row-t .ct{margin-left:auto;font-size:12px;font-family:var(--mono);color:var(--fg);font-variant-numeric:tabular-nums}
+.row-t .pc{width:52px;text-align:right;font-size:12px;color:var(--fg2);font-family:var(--mono)}
+.row-b{height:3px;border-radius:2px;background:rgb(237 230 227/.05)}
+.row-b i{display:block;height:100%;border-radius:2px}
+/* agents 树 */
+.ag{font-family:var(--mono);font-size:12px}
+.ag .src{display:flex;align-items:baseline;gap:8px;padding:5px 0 3px;color:var(--fg)}
+.ag .src .t{margin-left:auto;color:var(--fg);font-variant-numeric:tabular-nums}
+.ag .a{display:flex;align-items:center;gap:8px;padding:3px 0 3px 16px;color:var(--muted)}
+.ag .a .nm{width:96px;color:var(--fg2)}
+.ag .a .md{width:118px;font-size:11px;color:var(--muted)}
+.ag .a .bar{flex:1;height:3px;border-radius:2px;background:rgb(237 230 227/.05)}
+.ag .a .bar i{display:block;height:100%;border-radius:2px}
+.ag .a .tk{width:44px;text-align:right;font-variant-numeric:tabular-nums;color:var(--fg2)}
+.ag .a .c{width:56px;text-align:right;font-variant-numeric:tabular-nums;color:var(--fg)}
+
+/* 活流 */
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px}
+th{text-align:left;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+  font-weight:500;padding:0 0 9px;font-family:var(--sans)}
+th.r,td.r{text-align:right}
+td{padding:6px 0;border-top:1px solid rgb(237 230 227/.05);color:var(--fg2);font-variant-numeric:tabular-nums}
+td.hi{color:var(--fg)}
+.stag{display:inline-flex;align-items:center;gap:5px;padding:1px 7px;border-radius:4px;font-size:10.5px;
+  background:rgb(237 230 227/.06)}
+.new td{color:var(--fg);background:rgb(232 163 96/.04)}
+</style>
+
+<div class="top">
+  <div class="mark">TOK<b>LY</b></div>
+  <nav><a class="on" href="#">概览</a><a href="#">来源</a><a href="#">智能体</a><a href="#">数据健康</a><a href="#">设置</a></nav>
+  <div class="seg"><button>24h</button><button class="on">7d</button><button>30d</button><button>90d</button></div>
+  <div class="stat"><span class="pulse"></span>live · 10:42:07</div>
+</div>
+
+<div class="wrap">
+  <div class="hero">
+    <div class="h-big">
+      <span class="h-cur">$</span><span class="h-val">62.75</span>
+      <span class="h-refl"><span class="h-cur">$</span><span class="h-val">62.75</span></span>
+    </div>
+    <div class="h-sub">
+      <div class="h-i"><div class="lbl">tokens</div><div class="v">18.0M</div></div>
+      <div class="h-i"><div class="lbl">calls</div><div class="v">1,437</div></div>
+      <div class="h-i"><div class="lbl">sessions</div><div class="v">92</div></div>
+      <div class="h-i"><div class="lbl">cache hit</div><div class="v">90.4%</div></div>
+    </div>
+    <div class="h-right">
+      <div class="delta">↑ 48.8%</div>
+      <div class="h-flow">2.1M in · 5.2M out · 10.7M cached · vs 前一 7d</div>
+    </div>
+  </div>
+
+  <div class="srcband">
+    <div class="segbar">
+      <i style="width:58%;background:linear-gradient(90deg,#B87838,var(--cl1))"></i>
+      <i style="width:28%;background:linear-gradient(90deg,#5E8A48,var(--oa1))"></i>
+      <i style="width:9%;background:linear-gradient(90deg,#4E85A8,var(--gm1))"></i>
+      <i style="width:3%;background:var(--cu1)"></i>
+      <i style="width:2%;background:var(--oc1)"></i>
+    </div>
+    <div class="chips">
+      <span class="chip"><span class="g" style="color:var(--cl1)">✳</span><span class="n">claude</span><span class="p">58%</span><span class="c">3 models</span></span>
+      <span class="chip"><span class="g" style="color:var(--oa1)">⬢</span><span class="n">openai</span><span class="p">28%</span><span class="c">2 models</span></span>
+      <span class="chip"><span class="g" style="color:var(--gm1)">◆</span><span class="n">gemini</span><span class="p">9%</span><span class="c">2 models</span></span>
+      <span class="chip"><span class="g" style="color:var(--cu1)">●</span><span class="n">cursor</span><span class="p">3%</span><span class="c">1 model</span></span>
+      <span class="chip"><span class="g" style="color:var(--oc1)">▲</span><span class="n">opencode</span><span class="p">2%</span><span class="c">1 model</span></span>
+    </div>
+  </div>
+
+  <div class="band">
+    <div class="band-h"><span class="lbl">节奏 · 近 7 天 · 色相=来源 · 明度=模型</span>
+      <span class="note">峰值 07-30 3.30M · 窗口 18.0M / $62.75</span></div>
+    <div class="chartwrap">
+      <svg id="bars" viewBox="0 0 1448 216" style="width:100%;display:block"></svg>
+      <div class="chartrefl"><svg id="bars2" viewBox="0 0 1448 216" style="width:100%;display:block"></svg></div>
+    </div>
+  </div>
+
+  <div class="band">
+    <div class="band-h"><span class="lbl">配额</span>
+      <span class="note">判定色=按当前燃速的投影 · ╎=投影 · 短刻=匀速基准</span></div>
+    <div class="qgrid">
+      <div>
+        <div class="qrow">
+          <div class="q-h"><span class="q-n">claude · 5h 窗口</span><span class="q-pct num">61%</span><span class="q-r">4h23m 后重置 · 投影 88%</span></div>
+          <div class="track"><div class="fill" style="width:61%;background:linear-gradient(90deg,#8A5A31,var(--cl1))"></div>
+            <div class="tick pace" style="left:52%"></div><div class="tick" style="left:88%"></div></div>
+          <div class="q-attr">
+            <span class="qa"><i style="width:46px;background:var(--cl2)"></i>opus-5 38%</span>
+            <span class="qa"><i style="width:24px;background:var(--cl1)"></i>sonnet-5 19%</span>
+            <span class="qa"><i style="width:6px;background:var(--cl3)"></i>haiku 4%</span>
+          </div>
+        </div>
+        <div class="qrow">
+          <div class="q-h"><span class="q-n">claude · 周窗口</span><span class="q-pct num" style="color:var(--err)">78%</span><span class="q-r">1d6h 后重置</span></div>
+          <div class="track"><div class="fill" style="width:78%;background:linear-gradient(90deg,#7A4E28,var(--err))"></div>
+            <div class="tick pace" style="left:64%"></div><div class="tick" style="left:99.5%;background:var(--err);height:17px;top:-6px"></div></div>
+          <div class="q-f"><b>投影 104% · 预计 明日 09:10 提前触顶</b></div>
+        </div>
+        <div class="qrow">
+          <div class="q-h"><span class="q-n">codex · 周窗口</span><span class="q-pct num">32%</span><span class="q-r">3d 后重置 · 投影 46%</span></div>
+          <div class="track"><div class="fill" style="width:32%;background:linear-gradient(90deg,#5E8A48,var(--oa1))"></div>
+            <div class="tick pace" style="left:38%"></div><div class="tick" style="left:46%"></div></div>
+        </div>
+        <div class="qrow" style="margin-bottom:0">
+          <div class="q-h"><span class="q-n">gemini · 日窗口</span><span class="q-pct num" style="color:var(--warn)">74%</span><span class="q-r">6h 后重置 · 投影 96%</span></div>
+          <div class="track"><div class="fill" style="width:74%;background:linear-gradient(90deg,#8A7326,var(--warn))"></div>
+            <div class="tick pace" style="left:60%"></div><div class="tick" style="left:96%"></div></div>
+        </div>
+      </div>
+      <div class="radar-wrap">
+        <svg id="radar" width="252" height="238" viewBox="0 0 252 238"></svg>
+        <div class="radar-note">实线=已用 · 虚线=投影 · 100% 环外即超</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <div class="band-h"><span class="lbl">近 53 周</span></div>
+      <div class="hm-mo" id="mo"></div><div class="hm-grid" id="hg"></div>
+      <div class="hm-foot"><span>202 活跃日 · 最长连续 34 天 · 峰值日 3.30M</span>
+        <span class="sp">少<i style="background:#1B1613"></i><i style="background:#452B15"></i><i style="background:#7A4E24"></i><i style="background:#B87938"></i><i style="background:#F0A863"></i>多</span></div>
+    </div>
+    <div>
+      <div class="band-h"><span class="lbl">按模型</span><span class="note">7</span></div>
+      <div class="rows" id="rmodel"></div>
+    </div>
+    <div>
+      <div class="band-h"><span class="lbl">按智能体</span><span class="note">源 → 智能体 → 模型</span></div>
+      <div class="ag" id="ag"></div>
+    </div>
+  </div>
+
+  <div class="band" style="border-bottom:0">
+    <div class="band-h"><span class="lbl">实时事件流</span><span class="note">最近 6 · 共 1,437</span></div>
+    <table>
+      <thead><tr><th style="width:86px">时刻</th><th style="width:118px">来源</th><th>模型</th>
+        <th style="width:110px">智能体</th><th>项目</th><th class="r" style="width:88px">tokens</th><th class="r" style="width:72px">成本</th></tr></thead>
+      <tbody id="ev"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt=t=>t>=1e6?(t/1e6).toFixed(2)+'M':(t/1e3).toFixed(1)+'K';
+
+/* 分段柱：色相=来源，明度=模型 */
+const SER=[['sonnet','--cl1'],['opus','--cl2'],['haiku','--cl3'],['gpt-5.4','--oa1'],['sol','--oa2'],['gemini','--gm1']];
+const D=[['07-28',[420,140,40,300,120,160]],['07-29',[700,240,110,340,140,110]],
+  ['07-30',[820,320,110,520,280,130]],['07-31',[430,180,90,380,220,140]],
+  ['08-01',[160,60,30,180,100,70]],['08-02',[130,40,30,150,80,60]],
+  ['08-03',[760,300,160,360,200,120]],['08-04',[470,200,80,540,360,90]]];
+const PL=58,PR=14,PT=20,PB=24,W=1448,H=216,plotW=W-PL-PR,plotH=H-PT-PB,MAX=2600;
+const pitch=plotW/D.length,bw=Math.min(84,pitch*.58);
+let g='<g stroke="'+css('--grid')+'">';
+[0,650,1300,1950,2600].forEach(v=>{const y=PT+plotH-v/MAX*plotH;
+  g+=`<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}"/>`});
+g+='</g><g fill="'+css('--faint')+'" font-size="10" font-family="monospace" text-anchor="end">';
+[[0,'0'],[650,'650K'],[1300,'1.3M'],[1950,'1.95M'],[2600,'2.6M']].forEach(([v,l])=>{
+  g+=`<text x="${PL-9}" y="${PT+plotH-v/MAX*plotH+3.5}">${l}</text>`});
+g+='</g>';
+D.forEach((d,i)=>{
+  const cx=PL+pitch*i+pitch/2,x=cx-bw/2;let acc=0;const tot=d[1].reduce((a,b)=>a+b,0);
+  for(let s=d[1].length-1;s>=0;s--){const v=d[1][s];if(!v)continue;
+    const h=v/MAX*plotH,y=PT+plotH-(acc+v)/MAX*plotH;
+    g+=`<rect x="${x}" y="${y}" width="${bw}" height="${h-0.6}" fill="${css(SER[s][1])}" ${s===0?'rx="2"':''}/>`;
+    acc+=v}
+  g+=`<text x="${cx}" y="${PT+plotH-tot/MAX*plotH-7}" fill="${css('--fg2')}" font-size="10.5" font-family="monospace" text-anchor="middle">${(tot/1000).toFixed(2)}M</text>`;
+  g+=`<text x="${cx}" y="${H-7}" fill="${css('--faint')}" font-size="10" font-family="monospace" text-anchor="middle">${d[0]}</text>`});
+document.getElementById('bars').innerHTML=g;
+document.getElementById('bars2').innerHTML=g;
+
+/* 雷达（护栏版）：全轴同单位、顶点标值、双多边形 */
+(()=>{const cx=126,cy=122,R=76,OUT=1.12;
+ const AX=[['claude·5h',61,88],['claude·7d',78,104],['codex·7d',32,46],['gemini·1d',74,96]];
+ const ang=i=>-Math.PI/2+i*2*Math.PI/AX.length;
+ const pt=(i,v)=>[cx+Math.cos(ang(i))*R*Math.min(v,112)/100,cy+Math.sin(ang(i))*R*Math.min(v,112)/100];
+ let s='';
+ [25,50,75].forEach(r=>{const p=AX.map((_,i)=>pt(i,r).join(',')).join(' ');
+   s+=`<polygon points="${p}" fill="none" stroke="${css('--grid')}"/>`});
+ const p100=AX.map((_,i)=>pt(i,100).join(',')).join(' ');
+ s+=`<polygon points="${p100}" fill="none" stroke="rgb(237 230 227/.22)" stroke-width="1"/>`;
+ AX.forEach((_,i)=>{const [x,y]=pt(i,112);s+=`<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="${css('--grid')}"/>`});
+ const used=AX.map((a,i)=>pt(i,a[1]).join(',')).join(' ');
+ s+=`<polygon points="${used}" fill="rgb(232 163 96/.16)" stroke="${css('--accent')}" stroke-width="1.5"/>`;
+ const proj=AX.map((a,i)=>pt(i,a[2]).join(',')).join(' ');
+ s+=`<polygon points="${proj}" fill="none" stroke="${css('--fg2')}" stroke-width="1" stroke-dasharray="4 3"/>`;
+ AX.forEach((a,i)=>{const over=a[2]>100;const [px,py]=pt(i,a[2]);
+   if(over)s+=`<circle cx="${px}" cy="${py}" r="3" fill="${css('--err')}"/>`;
+   const [lx,ly]=pt(i,128);
+   s+=`<text x="${lx}" y="${ly+3}" fill="${css('--muted')}" font-size="10" font-family="monospace" text-anchor="middle">${a[0]}</text>`;
+   s+=`<text x="${lx}" y="${ly+15}" fill="${over?css('--err'):css('--fg')}" font-size="10.5" font-family="monospace" text-anchor="middle">${a[1]}%→${a[2]}%</text>`});
+ document.getElementById('radar').innerHTML=s})();
+
+/* 热力墙 */
+let seed=20260804>>>0;const rnd=()=>{seed^=seed<<13;seed>>>=0;seed^=seed>>17;seed^=seed<<5;seed>>>=0;return seed/4294967296};
+const ramp=["#1B1613","#452B15","#7A4E24","#B87938","#F0A863"];
+const hg=document.getElementById('hg');
+for(let w=0;w<53;w++)for(let d=0;d<7;d++){
+  const wk=d>=5?.35:1,grow=.45+w/53*.75,r=rnd();
+  const v=r<.14?0:Math.min(4,Math.ceil(r*wk*grow*5.2));
+  const i=document.createElement('i');i.style.background=ramp[v];hg.appendChild(i)}
+const mo=document.getElementById('mo');
+["8月","10月","12月","2月","4月","6月","8月"].forEach((n,i)=>{
+  mo.insertAdjacentHTML('beforeend',`<span style="left:${Math.round(i*53/6.5)*12}px">${n}</span>`)});
+
+/* 模型行：来源色族着色 */
+const M=[["claude-sonnet-5",'--cl1',5762574,11.86],["gpt-5.4",'--oa1',3879419,9.63],
+  ["gpt-5.6-sol",'--oa2',3078586,23.31],["gemini-3-flash",'--gm2',1614785,.26],
+  ["claude-haiku-4-5",'--cl3',1297756,.79],["claude-opus-5",'--cl2',1200995,14.66],
+  ["gemini-3-pro",'--gm1',1199492,2.24]];
+const tot=M.reduce((a,m)=>a+m[2],0);
+document.getElementById('rmodel').innerHTML=M.map(([n,c,t,$])=>{
+  const p=t/tot*100;
+  return `<div><div class="row-t"><span class="dot" style="color:${css(c)}">●</span>
+    <span class="nm">${n}</span><span class="ct">${fmt(t)}</span><span class="pc">$${$.toFixed(2)}</span></div>
+    <div class="row-b"><i style="width:${p}%;background:${css(c)}"></i></div></div>`}).join('');
+
+/* Agents 树 */
+const AG=[
+ ['claude-code','--cl1','$27.31',[
+   ['(main)','sonnet-5','--cl1',3.1,6.20,38],
+   ['adversary','opus-5','--cl2',1.2,14.66,15],
+   ['fast-worker','sonnet-5','--cl1',2.6,5.66,32],
+   ['Explore','haiku-4-5','--cl3',1.3,0.79,16]]],
+ ['codex','--oa1','$23.31',[['(main)','gpt-5.6-sol','--oa2',3.1,23.31,100]]],
+ ['gemini-cli','--gm1','$2.50',[['(main)','gemini-3-pro','--gm1',1.2,2.24,43],['(main)','gemini-3-flash','--gm2',1.6,0.26,57]]]];
+document.getElementById('ag').innerHTML=AG.map(([s,c,$,rows])=>
+  `<div class="src"><span style="color:${css(c)}">▾</span> ${s}<span class="t">${$}</span></div>`+
+  rows.map(([a,m,mc,tk,co,pc])=>
+    `<div class="a"><span class="nm">${a}</span><span class="md">${m}</span>
+     <span class="bar"><i style="width:${pc}%;background:${css(mc)}"></i></span>
+     <span class="tk">${tk.toFixed(1)}M</span><span class="c">$${co.toFixed(2)}</span></div>`).join('')
+).join('');
+
+/* 活流 */
+const SC={ 'claude-code':'--cl1','codex':'--oa1','cursor':'--cu1','opencode':'--oc1','gemini-cli':'--gm1'};
+const EV=[["10:42:07","claude-code","claude-sonnet-5","(main)","axiom/tokly",184213,0.42,1],
+ ["10:41:52","codex","gpt-5.6-sol","(main)","axiom/tokly",96044,0.61,0],
+ ["10:41:31","claude-code","claude-haiku-4-5","Explore","axiom/relay",41880,0.02,0],
+ ["10:40:58","cursor","gpt-5.4","(main)","scratch",128663,0.31,0],
+ ["10:40:12","claude-code","claude-opus-5","adversary","axiom/tokly",212905,1.84,0],
+ ["10:39:47","opencode","gemini-3-flash","(main)","axiom/site",58119,0.01,0]];
+document.getElementById('ev').innerHTML=EV.map(([t,s,m,a,p,tk,$,n])=>
+ `<tr class="${n?'new':''}"><td class="hi">${t}</td>
+  <td><span class="stag"><span style="color:${css(SC[s]||'--gray')}">●</span>${s}</span></td>
+  <td>${m}</td><td>${a}</td><td>${p}</td><td class="r hi">${fmt(tk)}</td><td class="r hi">$${$.toFixed(2)}</td></tr>`).join('');
+</script>

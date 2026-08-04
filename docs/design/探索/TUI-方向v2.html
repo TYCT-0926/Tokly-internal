@@ -1,0 +1,109 @@
+<meta charset="utf-8"><title>Tokly TUI · 方向 v2</title>
+<style>
+body{background:#0a0806;margin:0;padding:18px;font-family:"Maple Mono","Cascadia Mono","Consolas",monospace}
+pre{background:#120F0C;color:#B2ADA9;font-size:14px;line-height:1.34;margin:0;padding:14px 16px;
+    border-radius:6px;letter-spacing:0;white-space:pre;display:inline-block}
+.f{color:#514C49}.m{color:#8A8582}.w{color:#EDE6E3}.a{color:#E0985A}
+.s1{color:#F2AE72}.s2{color:#B57A44}.s3{color:#77502C}.s4{color:#46301B}
+.ok{color:#67B36A}.wn{color:#C3972A}.er{color:#E47C75}
+.tab{color:#120F0C;background:#E0985A}.tabo{color:#8A8582}
+.sel{background:#231E1B;color:#EDE6E3}
+</style><pre id="o"></pre>
+<script>
+const C=(s,c)=>c?`<span class="${c}">${s}</span>`:s;
+const pad=(s,n,r)=>{const l=[...s].length;return r?' '.repeat(Math.max(0,n-l))+s:s+' '.repeat(Math.max(0,n-l))};
+const L=[];const W=120;
+const rule=(t)=>L.push(C('─'.repeat(W),'f'));
+
+/* ── 标签栏：视图可见，不再藏在按键后面 ── */
+L.push(C(' tokly ','a')+C('│ ','f')+C(' Overview ','tab')+C(' Models  Daily  Sessions  Stats ','tabo')
+  +' '.repeat(W-7-2-10-32-24)+C('amber','m')+C(' ▸ ','f')+C('● ','ok')+C('live 10:42:07','m'));
+rule();
+
+/* ── 英雄行 ── */
+L.push(' '+C('$62.75','w').replace('$62.75','')+C('$','m')+C('62.75','w')+'   '
+  +C('18.0M','w')+C(' tokens','m')+'   '+C('1,437','w')+C(' calls','m')+'   '
+  +C('92','w')+C(' sessions','m')+'   '+C('90.4%','w')+C(' cache','m')
+  +' '.repeat(19)+C('↑48.8%','a')+C(' vs prior 7d','m'));
+L.push(' '+C('2.1M in · 5.2M out · 10.7M cached · 337K reasoning','f'));
+rule();
+
+/* ── 分段柱：八分块，不用盲文 ── */
+const D=[['07-28',600,420,600],['07-29',1050,480,400],['07-30',1250,800,320],['07-31',700,600,500],
+         ['08-01',250,280,240],['08-02',200,230,130],['08-03',1220,560,480],['08-04',750,900,300]];
+const ROWS=10,UNIT=340,BW=7,GAP=5;
+L.push(' '+C('tokens per day','m')+' '.repeat(66)+C('peak 07-30 3.30M · window 18.0M','f'));
+const grid=[];
+for(let r=0;r<ROWS;r++)grid.push([]);
+D.forEach(d=>{
+  const seg=[[d[3],'s3'],[d[2],'s2'],[d[1],'s1']];
+  let cells=[];seg.forEach(([v,c])=>{let n=Math.max(v>0?1:0,Math.round(v/UNIT));
+    for(let i=0;i<n;i++)cells.push(c)});
+  for(let r=0;r<ROWS;r++){const idx=ROWS-1-r;
+    grid[r].push(idx<cells.length?C('█'.repeat(BW),cells[idx]):' '.repeat(BW))}
+});
+const ax=['3.4M','','2.4M','','1.7M','','1.0M','','340K',''];
+for(let r=0;r<ROWS;r++){
+  const lab=ax[r]?pad(ax[r],5,1):'     ';
+  L.push(' '+C(lab,'f')+C(r%2?' │':' ┤','f')+' '+grid[r].map(c=>c).join(' '.repeat(GAP)));
+}
+L.push(' '+C('    0','f')+C(' ┼','f')+C('─'.repeat(8*(BW+GAP)),'f'));
+L.push('       '+D.map(d=>C(pad(d[0],BW,0),'f')).join(' '.repeat(GAP)));
+L.push(' '+C('●','s1')+C(' claude-sonnet-5   ','m')+C('●','s2')+C(' gpt-5.4   ','m')
+  +C('●','s3')+C(' gpt-5.6-sol   ','m')+C('●','s4')+C(' 4 others','m'));
+rule();
+
+/* ── 配额尺：满格 + 投影标记 ── */
+L.push(' '+C('quota','m'));
+const q=(n,pct,proj,reset,cls)=>{
+  const N=28,f=Math.round(pct/100*N),p=Math.min(N,Math.round(proj/100*N));
+  let bar='';for(let i=0;i<N;i++){bar+= i<f?C('█',cls) : (i===p?C('╎','w'):C('░','f'))}
+  return ' '+C(pad(n,13,0),'m')+bar+' '+C(pad(pct+'%',5,1),'w')
+    +C('  proj ','f')+C(pad(proj+'%',5,1),proj>100?'er':'m')
+    +C('  resets ','f')+C(reset,'m')+(proj>100?C('   ⚠ 预计提前 5h 触顶','er'):'');
+};
+L.push(q('claude · 5h',61,88,'4h23m','a'));
+L.push(q('claude · 7d',78,104,'1d 6h','er'));
+L.push(q('codex  · 7d',32,46,'3d','ok'));
+rule();
+
+/* ── 双栏：模型（双行，带明细）+ 项目 ── */
+L.push(' '+C('models by cost','m')+' '.repeat(52)+C('projects','m'));
+const MD=[['claude-sonnet-5','s1',5.76,11.86,32,'412K','1.20M','3.90M','240K'],
+          ['gpt-5.6-sol','s2',3.08,23.31,17,'288K','904K','1.79M','98K'],
+          ['gpt-5.4','s3',3.88,9.63,22,'331K','1.02M','2.35M','182K'],
+          ['claude-opus-5','s4',1.20,14.66,7,'96K','402K','661K','41K']];
+const PJ=[['axiom/tokly',7.20,26.44,40],['axiom/relay',4.12,14.21,23],['scratch',2.99,9.87,17],
+          ['axiom/site',1.90,6.62,11],['dotfiles',1.10,3.98,6]];
+MD.forEach((m,i)=>{
+  const bl=Math.round(m[4]/40*18);
+  const left=' '+C('●','' +m[1])+' '+C(pad(m[0],17,0),i===0?'w':'m')
+    +C('█'.repeat(bl),m[1])+C('░'.repeat(18-bl),'f')+' '+C(pad(m[2].toFixed(2)+'M',7,1),'w')
+    +C(pad('$'+m[3].toFixed(2),9,1),'a');
+  const p=PJ[i];
+  const pr=p?C(pad(p[0],14,0),'m')+C(pad(p[1].toFixed(2)+'M',7,1),'w')+C(pad('$'+p[2].toFixed(2),9,1),'a'):'';
+  L.push(pad(left,0)+' '.repeat(6)+pr);
+  L.push('   '+C(`in ${m[5]} · out ${m[6]} · cache-read ${m[7]} · cache-write ${m[8]}`,'f'));
+});
+rule();
+
+/* ── 实时流 ── */
+L.push(' '+C('recent','m')+'   '+C('time      source        model              project       tokens     cost','f'));
+const EV=[['10:42:07','claude-code','claude-sonnet-5','axiom/tokly','184.2K','$0.42',1],
+ ['10:41:52','codex','gpt-5.6-sol','axiom/tokly','96.0K','$0.61',0],
+ ['10:41:31','claude-code','claude-haiku-4-5','axiom/relay','41.9K','$0.02',0],
+ ['10:40:58','cursor','gpt-5.4','scratch','128.7K','$0.31',0]];
+EV.forEach(e=>{
+  const row='   '+C(e[0],e[6]?'w':'m')+'  '+C(pad(e[1],13,0),'f')+C(pad(e[2],19,0),e[6]?'w':'m')
+    +C(pad(e[3],14,0),'m')+C(pad(e[4],9,1),e[6]?'w':'m')+C(pad(e[5],9,1),'a');
+  L.push(e[6]?`<span class="sel">${row}</span>`:row);
+});
+rule();
+
+/* ── 常驻状态栏：总量 + 键位，始终可见 ── */
+L.push(' '+C('18,033,607 tokens','w')+C(' │ ','f')+C('$62.75','a')+C(' │ ','f')+C('7 models · 6 projects','m')
+  +' '.repeat(20)+C('↑↓','w')+C(' scroll  ','f')+C('←→','w')+C(' view  ','f')
+  +C('r','w')+C(' refresh  ','f')+C('t','w')+C(' theme  ','f')+C('/','w')+C(' filter  ','f')
+  +C('q','w')+C(' quit','f'));
+document.getElementById('o').innerHTML=L.join('\n');
+</script>

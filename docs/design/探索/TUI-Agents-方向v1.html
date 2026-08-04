@@ -1,0 +1,69 @@
+<meta charset="utf-8"><title>Tokly TUI · Agents 视图 · 方向 v1</title>
+<style>
+body{background:#0a0806;margin:0;padding:18px;font-family:"Maple Mono","Cascadia Mono","Consolas",monospace}
+pre{background:#120F0C;color:#B2ADA9;font-size:14px;line-height:1.36;margin:0;padding:14px 16px;
+    border-radius:6px;white-space:pre;display:inline-block}
+.f{color:#544F4B}.m{color:#8A8582}.w{color:#EDE6E3}.a{color:#E8A360}
+.c1{color:#E8A360}.c2{color:#C77F3C}.c3{color:#F4C08A}
+.o1{color:#8FB573}.o2{color:#6D9A55}.g1{color:#6FA8C9}.g2{color:#9CC3DB}
+.ok{color:#7CBF80}.wn{color:#D4AF37}.er{color:#E8837B}
+.tab{color:#120F0C;background:#E8A360}.sel{background:#231E1B;color:#EDE6E3}
+</style><pre id="o"></pre>
+<script>
+const C=(s,c)=>c?`<span class="${c}">${s}</span>`:s;
+const pad=(s,n,r)=>{const l=[...s].length;return r?' '.repeat(Math.max(0,n-l))+s:s+' '.repeat(Math.max(0,n-l))};
+const L=[],W=118;
+const rule=()=>L.push(C('─'.repeat(W),'f'));
+const bar=(pc,w,cls)=>{const f=Math.round(pc/100*w);return C('█'.repeat(f),cls)+C('░'.repeat(w-f),'f')};
+
+L.push(C(' tokly ','a')+C('│  ','f')+C('Overview  Models  ','m')+C(' Agents ','tab')+C('  Daily  Stats','m')
+  +' '.repeat(W-8-3-18-8-14-24)+C('amber','m')+C(' ▸ ','f')+C('● ','ok')+C('live 10:42:07','m'));
+rule();
+L.push(' '+C('agents · by cost','m')+' '.repeat(W-17-26)+C('window 7d · $62.75 · 18.0M','f'));
+L.push('');
+L.push(' '+C('source / agent      model                usage','f')
+  +' '.repeat(26)+C('tokens','f')+'     '+C('cost','f')+'   '+C('share','f'));
+L.push('');
+/* claude-code 组 */
+L.push(' '+C('▾ ','c1')+C('claude-code','w')+' '.repeat(24)+C('4 agents','f')+' '.repeat(21)
+  +C(pad('8.2M',6,1),'w')+C(pad('$27.31',9,1),'a')+C(pad('44%',7,1),'m'));
+const rows=[
+ ['(main)','claude-sonnet-5','c1',3.1,6.20,38,'in 412K · out 1.20M · cache-read 3.90M · cache-write 240K'],
+ ['adversary','claude-opus-5','c2',1.2,14.66,15,'in 96K · out 402K · cache-read 661K · cache-write 41K'],
+ ['fast-worker','claude-sonnet-5','c1',2.6,5.66,32,'in 331K · out 1.02M · cache-read 2.35M · cache-write 182K'],
+ ['Explore','claude-haiku-4-5','c3',1.3,0.79,16,'in 288K · out 904K · cache-read 1.79M · cache-write 98K']];
+rows.forEach(([a,m,mc,tk,co,pc,det],i)=>{
+  const r='   '+C(pad(a,15,0),i===0?'w':'m')+C(pad(m,20,0),'m')+bar(pc,28,mc)
+    +C(pad(tk.toFixed(1)+'M',7,1),'w')+C(pad('$'+co.toFixed(2),9,1),'a')+C(pad(pc+'%',7,1),'m');
+  L.push(i===0?`<span class="sel">${r}</span>`:r);
+  L.push('   '+C(det,'f'));
+});
+L.push('');
+/* codex 组 */
+L.push(' '+C('▾ ','o1')+C('codex','w')+' '.repeat(30)+C('1 agent','f')+' '.repeat(22)
+  +C(pad('3.1M',6,1),'w')+C(pad('$23.31',9,1),'a')+C(pad('37%',7,1),'m'));
+L.push('   '+C(pad('(main)',15,0),'m')+C(pad('gpt-5.6-sol',20,0),'m')+bar(100,28,'o2')
+  +C(pad('3.1M',7,1),'w')+C(pad('$23.31',9,1),'a')+C(pad('100%',7,1),'m'));
+L.push('   '+C('in 288K · out 904K · cache-read 1.79M · cache-write 98K','f'));
+L.push('');
+/* gemini 折叠组 */
+L.push(' '+C('▸ ','g1')+C('gemini-cli','w')+' '.repeat(25)+C('1 agent · 2 models','f')+' '.repeat(11)
+  +C(pad('2.8M',6,1),'w')+C(pad('$2.50',9,1),'a')+C(pad('4%',7,1),'m'));
+rule();
+/* 配额归因 */
+L.push(' '+C('quota attribution · claude · 5h window','m')
+  +' '.repeat(W-40-37)+C('61% used · proj 88% · resets 4h23m','f'));
+L.push('');
+[['claude-opus-5','c2',38],['claude-sonnet-5','c1',19],['claude-haiku-4-5','c3',4]].forEach(([m,c,pc])=>{
+  L.push('   '+C(pad(m,19,0),'m')+bar(pc,42,c)+C(pad(pc+'%',6,1),'w'));
+});
+L.push('');
+L.push(' '+C('claude · 7d ','m')+bar(78,42,'er')+C(pad('78%',6,1),'er')
+  +C('  proj 104% ','er')+C('⚠ 预计 明日 09:10 触顶','er'));
+rule();
+L.push(' '+C('18,033,607 tokens','w')+C(' │ ','f')+C('$62.75','a')+C(' │ ','f')
+  +C('3 sources · 7 models · 6 agents','m')
+  +' '.repeat(13)+C('↑↓','w')+C(' rows  ','f')+C('⏎','w')+C(' expand  ','f')
+  +C('←→','w')+C(' view  ','f')+C('/','w')+C(' filter  ','f')+C('q','w')+C(' quit','f'));
+document.getElementById('o').innerHTML=L.join('\n');
+</script>

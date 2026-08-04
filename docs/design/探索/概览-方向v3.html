@@ -1,0 +1,276 @@
+<meta charset="utf-8">
+<title>Tokly 概览 · 重设计方向 v3</title>
+<style>
+:root{
+  --canvas:#120F0C; --raised:#191512;
+  --fg:#EDE6E3; --fg2:#B2ADA9; --muted:#8A8582; --faint:#514C49;
+  --hair:rgb(237 230 227 / .10);
+  --accent:#E0985A; --accent-hi:#F4AB6D; --accent-dim:#7A4E28;
+  --s1:#E0985A; --s2:#CFC8C2; --s3:#7E7873; --s4:#3E3A37;
+  --grid:rgb(237 230 227 / .06);
+  --ok:#67B36A; --warn:#C3972A; --err:#E47C75;
+  --mono:"Maple Mono","SF Mono","JetBrains Mono",ui-monospace,monospace;
+  --sans:"Geist Sans",system-ui,-apple-system,"PingFang SC","Microsoft YaHei UI",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--canvas);color:var(--fg);font-family:var(--sans);font-size:13px;
+     -webkit-font-smoothing:antialiased}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.lbl{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:500}
+
+.top{height:46px;display:flex;align-items:center;gap:26px;padding:0 22px;
+     border-bottom:1px solid var(--hair);position:sticky;top:0;background:var(--canvas);z-index:9}
+.mark{font-size:13px;letter-spacing:.07em;color:var(--fg2);font-weight:600}
+.mark b{color:var(--accent)}
+nav{display:flex;gap:2px}
+nav a{padding:5px 11px;border-radius:6px;color:var(--muted);text-decoration:none;font-size:12.5px}
+nav a.on{color:var(--fg);background:rgb(237 230 227 / .07)}
+.seg{margin-left:auto;display:flex;border:1px solid var(--hair);border-radius:6px;overflow:hidden}
+.seg button{background:none;border:0;color:var(--muted);font-size:12px;padding:5px 12px;
+     cursor:pointer;font-family:var(--mono)}
+.seg button.on{background:rgb(224 152 90 / .14);color:var(--accent)}
+.pulse{width:6px;height:6px;border-radius:50%;background:var(--ok);
+  box-shadow:0 0 0 0 rgb(103 179 106/.6);animation:pl 2.6s ease-out infinite}
+@keyframes pl{0%{box-shadow:0 0 0 0 rgb(103 179 106/.5)}70%{box-shadow:0 0 0 6px rgb(103 179 106/0)}100%{box-shadow:0 0 0 0 rgb(103 179 106/0)}}
+@media (prefers-reduced-motion:reduce){.pulse{animation:none}}
+.stat{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11.5px;font-family:var(--mono)}
+.wrap{padding:0 22px}
+
+/* 英雄条 */
+.hero{display:flex;align-items:flex-end;gap:32px;padding:24px 0 18px;border-bottom:1px solid var(--hair)}
+.h-cur{font-size:21px;color:var(--muted);font-family:var(--mono);align-self:flex-start;margin-top:9px}
+.h-val{font-size:50px;line-height:.9;font-family:var(--mono);font-variant-numeric:tabular-nums;
+       letter-spacing:-.03em;font-weight:500}
+.h-sub{display:flex;gap:28px;padding-bottom:4px}
+.h-i .lbl{margin-bottom:5px}
+.h-i .v{font-size:18px;font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--fg2)}
+.h-right{margin-left:auto;text-align:right;padding-bottom:3px}
+.delta{font-family:var(--mono);font-size:14px;color:var(--accent)}
+.h-flow{font-size:11.5px;color:var(--faint);font-family:var(--mono);margin-top:6px}
+
+.band{padding:22px 0;border-bottom:1px solid var(--hair)}
+.band:last-child{border:0}
+.band-h{display:flex;align-items:baseline;gap:12px;margin-bottom:14px}
+.band-h .note{margin-left:auto;font-size:11.5px;color:var(--faint);font-family:var(--mono)}
+
+/* 配额 */
+.quota{display:grid;grid-template-columns:repeat(3,1fr);gap:34px}
+.q-h{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
+.q-n{font-size:12.5px;color:var(--fg2)}
+.q-r{margin-left:auto;font-size:11px;color:var(--faint);font-family:var(--mono)}
+.q-pct{font-size:15px;font-family:var(--mono)}
+.track{height:5px;border-radius:3px;background:rgb(237 230 227 / .07);position:relative}
+.fill{height:100%;border-radius:3px}
+.tick{position:absolute;top:-4px;width:1.5px;height:13px;background:var(--fg2)}
+.q-f{margin-top:9px;font-size:10.5px;color:var(--faint);font-family:var(--mono)}
+.q-f b{color:var(--err);font-weight:400}
+
+/* 三栏 */
+.cols{display:grid;grid-template-columns:1fr 320px 320px;gap:38px;padding:22px 0;
+      border-bottom:1px solid var(--hair)}
+.hm-wrap{position:relative}
+.hm{display:flex;gap:6px}
+.hm-days{display:flex;flex-direction:column;gap:2px}
+.hm-days span{height:9px;font-size:9px;color:var(--faint);font-family:var(--mono);line-height:10px}
+.hm-mo{position:relative;height:14px;margin-bottom:2px}
+.hm-mo span{position:absolute;font-size:9.5px;color:var(--muted);font-family:var(--mono)}
+.hm-grid{display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,9px);gap:2px}
+.hm-grid i{width:9px;height:9px;border-radius:1.5px;display:block}
+.hm-foot{margin-top:13px;display:flex;align-items:center;gap:8px;font-size:11.5px;
+   color:var(--muted);font-family:var(--mono)}
+.hm-foot .sp{margin-left:auto;display:flex;align-items:center;gap:3px;font-size:10px;color:var(--faint)}
+.hm-foot .sp i{width:9px;height:9px;border-radius:1.5px}
+
+.rows{display:flex;flex-direction:column;gap:11px}
+.row{display:block;text-decoration:none;color:inherit}
+.row-t{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
+.row-t .nm{font-size:12px;color:var(--fg2);font-family:var(--mono);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.row-t .ct{margin-left:auto;font-size:12px;font-family:var(--mono);color:var(--fg);
+  font-variant-numeric:tabular-nums}
+.row-t .pc{width:54px;text-align:right;font-size:12px;color:var(--fg2);font-family:var(--mono);
+  font-variant-numeric:tabular-nums}
+.row-b{height:3px;border-radius:2px;background:rgb(237 230 227 / .05)}
+.row-b i{display:block;height:100%;border-radius:2px;
+  background:linear-gradient(90deg,var(--accent-dim),var(--accent))}
+.row:hover .nm{color:var(--fg)}
+
+/* 实时流 */
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px}
+th{text-align:left;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+   font-weight:500;padding:0 0 9px;font-family:var(--sans)}
+th.r,td.r{text-align:right}
+td{padding:6px 0;border-top:1px solid rgb(237 230 227/.05);color:var(--fg2);
+   font-variant-numeric:tabular-nums}
+tr:hover td{background:rgb(237 230 227/.03)}
+td.hi{color:var(--fg)}
+.src{display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;
+  background:rgb(237 230 227/.07);color:var(--muted)}
+.new td{color:var(--fg)}
+</style>
+
+<div class="top">
+  <div class="mark">TOK<b>LY</b></div>
+  <nav><a href="#" class="on">概览</a><a href="#">下钻</a><a href="#">数据健康</a><a href="#">设置</a></nav>
+  <div class="seg"><button>24h</button><button class="on">7d</button><button>30d</button><button>90d</button></div>
+  <div class="stat"><span class="pulse"></span>live · 10:42:07</div>
+</div>
+
+<div class="wrap">
+  <div class="hero">
+    <div style="display:flex;align-items:baseline"><span class="h-cur">$</span><span class="h-val">62.75</span></div>
+    <div class="h-sub">
+      <div class="h-i"><div class="lbl">tokens</div><div class="v">18.0M</div></div>
+      <div class="h-i"><div class="lbl">calls</div><div class="v">1,437</div></div>
+      <div class="h-i"><div class="lbl">sessions</div><div class="v">92</div></div>
+      <div class="h-i"><div class="lbl">cache hit</div><div class="v">90.4%</div></div>
+    </div>
+    <div class="h-right">
+      <div class="delta">↑ 48.8%</div>
+      <div class="h-flow">2.1M in · 5.2M out · 10.7M cached &nbsp;·&nbsp; vs 前一 7d</div>
+    </div>
+  </div>
+
+  <!-- 柱状：点少时柱优于线 -->
+  <div class="band">
+    <div class="band-h"><span class="lbl">节奏 · 近 7 天 · 按模型分段</span>
+      <span class="note">峰值 07-30 3.30M · 窗口内 18.0M / $62.75</span></div>
+    <svg id="bars" viewBox="0 0 1456 240" style="width:100%;height:240px;display:block"></svg>
+  </div>
+
+  <div class="band">
+    <div class="band-h"><span class="lbl">配额</span>
+      <span class="note">刻度 = 按当前速率到重置时刻的投影</span></div>
+    <div class="quota">
+      <div>
+        <div class="q-h"><span class="q-n">Claude · 5h 窗口</span><span class="q-pct num">61%</span>
+          <span class="q-r">4h23m 后重置</span></div>
+        <div class="track"><div class="fill" style="width:61%;background:linear-gradient(90deg,var(--accent-dim),var(--accent))"></div>
+          <div class="tick" style="left:88%"></div></div>
+        <div class="q-f">投影 88% · 可安全用完</div>
+      </div>
+      <div>
+        <div class="q-h"><span class="q-n">Claude · 周窗口</span><span class="q-pct num" style="color:var(--err)">78%</span>
+          <span class="q-r">1d6h 后重置</span></div>
+        <div class="track"><div class="fill" style="width:78%;background:linear-gradient(90deg,#7A4E28,var(--err))"></div>
+          <div class="tick" style="left:100%;background:var(--err);height:17px;top:-6px"></div></div>
+        <div class="q-f"><b>投影 104% · 预计提前 5h 触顶</b></div>
+      </div>
+      <div>
+        <div class="q-h"><span class="q-n">Codex · 周窗口</span><span class="q-pct num">32%</span>
+          <span class="q-r">3d 后重置</span></div>
+        <div class="track"><div class="fill" style="width:32%;background:linear-gradient(90deg,#2F4F31,var(--ok))"></div>
+          <div class="tick" style="left:46%"></div></div>
+        <div class="q-f">投影 46% · 余量充足</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="hm-wrap">
+      <div class="band-h"><span class="lbl">近 53 周</span></div>
+      <div class="hm">
+        <div class="hm-days" style="padding-top:16px">
+          <span>一</span><span></span><span>三</span><span></span><span>五</span><span></span><span></span></div>
+        <div><div class="hm-mo" id="mo"></div><div class="hm-grid" id="hg"></div></div>
+      </div>
+      <div class="hm-foot"><span>202 活跃日 · 最长连续 34 天 · 峰值日 3.30M</span>
+        <span class="sp">少<i style="background:#191512"></i><i style="background:#4A2E17"></i><i style="background:#8A5A2E"></i><i style="background:#C08147"></i><i style="background:#F2AE72"></i>多</span></div>
+    </div>
+    <div>
+      <div class="band-h"><span class="lbl">按模型</span><span class="note">7</span></div>
+      <div class="rows" id="rmodel"></div>
+    </div>
+    <div>
+      <div class="band-h"><span class="lbl">按项目</span><span class="note">6</span></div>
+      <div class="rows" id="rproj"></div>
+    </div>
+  </div>
+
+  <div class="band">
+    <div class="band-h"><span class="lbl">实时事件流</span>
+      <span class="note">最近 8 条 · 共 1,437</span></div>
+    <table>
+      <thead><tr><th style="width:88px">时刻</th><th style="width:104px">来源</th><th>模型</th>
+        <th>项目</th><th class="r" style="width:96px">tokens</th><th class="r" style="width:78px">out</th>
+        <th class="r" style="width:88px">cache</th><th class="r" style="width:78px">成本</th></tr></thead>
+      <tbody id="ev"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+let s=20260804>>>0;
+const rnd=()=>{s^=s<<13;s>>>=0;s^=s>>17;s^=s<<5;s>>>=0;return s/4294967296};
+const fmt=t=>t>=1e6?(t/1e6).toFixed(2)+'M':t>=1e3?(t/1e3).toFixed(1)+'K':''+t;
+
+/* ── 分段柱 ── */
+const D=[["07-28",600,420,600],["07-29",1050,480,400],["07-30",1250,800,320],["07-31",700,600,500],
+         ["08-01",250,280,240],["08-02",200,230,130],["08-03",1220,560,480],["08-04",750,900,300]];
+const PL=64,PR=18,PT=26,PB=26,W=1456,H=240,plotW=W-PL-PR,plotH=H-PT-PB;
+const max=3400, pitch=plotW/D.length, bw=Math.min(96,pitch*0.62);
+let g=`<g stroke="var(--grid)">`;
+[0,850,1700,2550,3400].forEach(v=>{const y=PT+plotH-v/max*plotH;g+=`<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}"/>`});
+g+=`</g><g fill="var(--faint)" font-size="10" font-family="var(--mono)" text-anchor="end">`;
+[[0,'0'],[850,'850K'],[1700,'1.7M'],[2550,'2.55M'],[3400,'3.4M']].forEach(([v,l])=>{
+  g+=`<text x="${PL-10}" y="${PT+plotH-v/max*plotH+3.5}">${l}</text>`});
+g+=`</g>`;
+D.forEach((d,i)=>{
+  const cx=PL+pitch*i+pitch/2, x=cx-bw/2, tot=d[1]+d[2]+d[3];
+  let acc=0;
+  [[d[3],'var(--s3)'],[d[2],'var(--s2)'],[d[1],'var(--s1)']].forEach(([v,c],k)=>{
+    const h=v/max*plotH, y=PT+plotH-(acc+v)/max*plotH;
+    g+=`<rect x="${x}" y="${y}" width="${bw}" height="${h}" fill="${c}" ${k===2?'rx="2"':''}/>`;acc+=v});
+  g+=`<text x="${cx}" y="${PT+plotH-tot/max*plotH-7}" fill="var(--fg2)" font-size="10.5"
+      font-family="var(--mono)" text-anchor="middle">${(tot/1000).toFixed(2)}M</text>`;
+  g+=`<text x="${cx}" y="${H-8}" fill="var(--faint)" font-size="10" font-family="var(--mono)"
+      text-anchor="middle">${d[0]}</text>`;
+});
+/* 图例贴在图内右上，不另起一行 */
+g+=`<g font-size="10.5" font-family="var(--mono)">`;
+[['claude-sonnet-5','var(--s1)',0],['gpt-5.4','var(--s2)',1],['gpt-5.6-sol','var(--s3)',2]].forEach(([n,c,i])=>{
+  g+=`<rect x="${W-PR-232+i*80}" y="4" width="7" height="7" rx="1.5" fill="${c}"/>
+      <text x="${W-PR-222+i*80}" y="11" fill="var(--muted)">${n.length>13?n.slice(0,12)+'…':n}</text>`});
+g+=`</g>`;
+document.getElementById('bars').innerHTML=g;
+
+/* ── 热力图 ── */
+const ramp=["#191512","#4A2E17","#8A5A2E","#C08147","#F2AE72"];
+const hg=document.getElementById('hg');
+for(let w=0;w<53;w++)for(let d=0;d<7;d++){
+  const wk=d>=5?.35:1, grow=.45+w/53*.75, r=rnd();
+  const v=r<.14?0:Math.min(4,Math.ceil(r*wk*grow*5.2));
+  const i=document.createElement('i');i.style.background=ramp[v];hg.appendChild(i);
+}
+/* 月标按周索引定位，不再等宽硬排 */
+const mo=document.getElementById('mo');
+const names=["8月","9月","10月","11月","12月","1月","2月","3月","4月","5月","6月","7月","8月"];
+names.forEach((n,i)=>{const wk=Math.round(i*53/13);
+  mo.insertAdjacentHTML('beforeend',`<span style="left:${wk*11}px">${n}</span>`)});
+
+/* ── 行 ── */
+const mk=(id,arr,unit)=>{const tot=arr.reduce((a,x)=>a+x[1],0);
+ document.getElementById(id).innerHTML=arr.map(([n,t,c])=>{const p=t/tot*100;
+  return `<a class="row" href="#"><div class="row-t"><span class="nm">${n}</span>
+   <span class="ct">${fmt(t)}</span><span class="pc">$${c.toFixed(2)}</span></div>
+   <div class="row-b"><i style="width:${p}%"></i></div></a>`}).join('')};
+mk('rmodel',[["claude-sonnet-5",5762574,11.86],["gpt-5.4",3879419,9.63],["gpt-5.6-sol",3078586,23.31],
+  ["gemini-3-flash",1614785,.26],["claude-haiku-4-5",1297756,.79],["claude-opus-5",1200995,14.66],
+  ["gemini-3-pro",1199492,2.24]]);
+mk('rproj',[["axiom/tokly",7204118,26.44],["axiom/relay",4118902,14.21],["scratch",2988310,9.87],
+  ["axiom/site",1904772,6.62],["dotfiles",1103551,3.98],["(无项目)",713954,1.63]]);
+
+/* ── 事件流 ── */
+const EV=[["10:42:07","claude-code","claude-sonnet-5","axiom/tokly",184213,12408,148900,0.42],
+ ["10:41:52","codex","gpt-5.6-sol","axiom/tokly",96044,8112,71200,0.61],
+ ["10:41:31","claude-code","claude-haiku-4-5","axiom/relay",41880,3204,33100,0.02],
+ ["10:40:58","cursor","gpt-5.4","scratch",128663,9940,101400,0.31],
+ ["10:40:12","claude-code","claude-opus-5","axiom/tokly",212905,16880,170300,1.84],
+ ["10:39:47","opencode","gemini-3-flash","axiom/site",58119,4402,44800,0.01],
+ ["10:39:03","claude-code","claude-sonnet-5","axiom/tokly",171226,11004,139200,0.39],
+ ["10:38:20","codex","gpt-5.6-sol","dotfiles",84550,6621,63900,0.54]];
+document.getElementById('ev').innerHTML=EV.map(([t,s,m,p,tk,o,c,$],i)=>
+ `<tr class="${i===0?'new':''}"><td class="hi">${t}</td><td><span class="src">${s}</span></td>
+  <td>${m}</td><td>${p}</td><td class="r hi">${fmt(tk)}</td><td class="r">${fmt(o)}</td>
+  <td class="r">${fmt(c)}</td><td class="r hi">$${$.toFixed(2)}</td></tr>`).join('');
+</script>
