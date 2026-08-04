@@ -10,12 +10,14 @@
 
 **永不入库**：对话内容样本、用户主目录路径的真实快照、任何 token/cookie。fixtures 一律人工构造，禁止从真实数据导出后"忘记脱敏"。
 
+`internal/` 与 `docs/` 永不入公开仓：CI guard job 对 `git ls-files` 把关，树内出现即红。
+
 ## Commit
 
 - Conventional Commits：`feat(core): ...` / `fix(adapter-claude): ...` / `docs(adr): ...` / `refactor:` / `test:` / `chore:`，scope 用包名
 - 标题 ≤72 字符，祈使句，英文（代码仓库的国际惯例）；正文写动机与取舍，不写改动复述
 - 一个 commit 一个逻辑单元；`wip`/`fixup` 不许进 main（squash 或 rebase 清理）
-- **禁止任何工具署名**：不加 `Generated with …`、`Co-Authored-By: <bot>`、AI 工具标记。commit 的作者与语气就是工程师本人
+- **禁止任何工具署名**：不加 `Generated with …`、`Co-Authored-By: <bot>`、AI 工具标记。commit 的作者与语气就是工程师本人；guard job 在 CI 对 `origin/main..HEAD` 的提交正文机器拦截
 - 不提交注释掉的代码、调试输出、`console.log` 残骸
 
 ## 分支与 PR
@@ -36,3 +38,4 @@
 - main 的历史是产品的一部分：读 `git log` 应该能重构出每个决策的"为什么"
 - 合入前作者自己先 `git rebase -i` 清理碎 commit（"oops"、"fix typo" 不该存在于 main）
 - force-push 只允许在自己的功能分支，main 永不
+- 禁用 `git clean -xdff`（会连 ignored 目录一起删）；清理构建产物用 `cargo clean`，确需清未跟踪文件用 `git clean -xdf -e internal`
