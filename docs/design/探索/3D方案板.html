@@ -1,0 +1,162 @@
+<meta charset="utf-8"><title>Tokly · 3D 可视化方案板</title>
+<style>
+body{background:#080706;color:#F5F1ED;font-family:"Geist Sans",system-ui,"Microsoft YaHei UI",sans-serif;
+  margin:0;padding:22px;font-size:13px}
+h1{font-size:14px;font-weight:600;letter-spacing:.02em;margin:0 0 4px}
+.sub{color:#736D66;font-size:11.5px;margin-bottom:18px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.panel{background:#100E0C;border:1px solid rgba(240,228,216,.08);border-radius:14px;padding:16px 18px}
+.ph{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
+.ph b{font-size:13px}
+.ph .tag{font-size:10px;color:#E8A360;border:1px solid rgba(232,163,96,.3);border-radius:99px;padding:1px 8px}
+.ph .note{margin-left:auto;font-size:10.5px;color:#736D66}
+svg{width:100%;display:block}
+</style>
+<h1>3D 可视化方案板 · 近 53 周活动（同一份数据，四种渲染）</h1>
+<div class="sub">质感基线已统一：受光面渐变 · 边缘高光 · 基部环境遮蔽 · 地面网格。选定方案进正式实现；2D 网格恒可切换。</div>
+<div class="grid">
+  <div class="panel"><div class="ph"><b>① 余烬地形 · 精修</b><span class="tag">连绵</span><span class="note">整片山体读总量走势</span></div>
+    <svg id="pA" viewBox="0 0 660 250"></svg></div>
+  <div class="panel"><div class="ph"><b>② 体素柱阵</b><span class="tag">离散</span><span class="note">逐日独立可点，最接近参考</span></div>
+    <svg id="pB" viewBox="0 0 660 250"></svg></div>
+  <div class="panel"><div class="ph"><b>③ 绸面山脊</b><span class="tag">曲线</span><span class="note">七条周线前后错落，最安静</span></div>
+    <svg id="pC" viewBox="0 0 660 250"></svg></div>
+  <div class="panel"><div class="ph"><b>④ 浮雕热力</b><span class="tag">2.5D</span><span class="note">判读最强，高度化作投影与浮起</span></div>
+    <svg id="pD" viewBox="0 0 660 250"></svg></div>
+</div>
+<script>
+/* 共享数据 */
+const mk=()=>{let s=20260804>>>0;const r=()=>{s^=s<<13;s>>>=0;s^=s>>17;s^=s<<5;s>>>=0;return s/4294967296};
+ const d=[];for(let w=0;w<53;w++){const c=[];for(let y=0;y<7;y++){
+   const wk=y>=5?.32:1,g=.45+w/53*.8,x=r();c.push(x<.15?0:Math.min(4,Math.ceil(x*wk*g*5.4)))}d.push(c)}
+ d[44][2]=4;d[44][3]=4;d[45][2]=4;return{d,r}};
+const TOP=["#241B11","#4A3018","#7E5124","#BC7B36","#F2A452"];
+const LT =["#2E2215","#5C3C1F","#96622C","#D08C42","#FFC078"];
+const SD =["#181009","#33200F","#573717","#8A5825","#C87F3A"];
+const DK =["#100A05","#241608","#3E2610","#653F1A","#A0632C"];
+
+/* 公共 defs：每档三面渐变 + 辉光 */
+const defs=id=>{let s=`<defs>`;
+ for(let v=1;v<5;v++){
+  s+=`<linearGradient id="${id}t${v}" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="${LT[v]}"/><stop offset="1" stop-color="${TOP[v]}"/></linearGradient>`;
+  s+=`<linearGradient id="${id}l${v}" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="${SD[v]}"/><stop offset="1" stop-color="${DK[v]}"/></linearGradient>`;
+  s+=`<linearGradient id="${id}f${v}" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="${DK[v]}"/><stop offset="1" stop-color="#0B0704"/></linearGradient>`}
+ s+=`<radialGradient id="${id}glow"><stop offset="0" stop-color="#F2A452" stop-opacity=".8"/>
+   <stop offset="1" stop-color="#F2A452" stop-opacity="0"/></radialGradient>`;
+ s+=`<radialGradient id="${id}floor" cx="50%" cy="40%" r="70%">
+   <stop offset="0" stop-color="#171310"/><stop offset="1" stop-color="#0C0906"/></radialGradient>`;
+ return s+`</defs>`};
+
+/* ① 精修地形 */
+(()=>{const {d}=mk();const COLS=53,ROWS=7,BH=7.2,WX=10.6,WY=-2.35,DX=6.2,DY=4.05,OX=14,OY=205;
+ const P=(x,y)=>[OX+x*WX+y*DX,OY+x*WY+y*DY];
+ let s=defs('A');
+ const g0=P(0,0),g1=P(COLS,0),g2=P(COLS,ROWS),g3=P(0,ROWS);
+ s+=`<polygon points="${g0} ${g1} ${g2} ${g3}" fill="url(#Afloor)" stroke="rgba(240,228,216,.06)"/>`;
+ for(let x=4;x<COLS;x+=4){const a=P(x,0),b=P(x,ROWS);
+  s+=`<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="rgba(240,228,216,.03)"/>`}
+ const items=[];
+ for(let x=0;x<COLS;x++)for(let y=0;y<ROWS;y++){const v=d[x][y];if(!v)continue;
+  const h=v*BH+2,p00=P(x,y),p10=P(x+1,y),p11=P(x+1,y+1),p01=P(x,y+1);
+  const L=p=>[p[0],p[1]-h],t00=L(p00),t10=L(p10),t11=L(p11),t01=L(p01);
+  let b='';
+  if(v>=3)b+=`<ellipse cx="${p01[0]+WX/2}" cy="${p01[1]}" rx="${WX*1.1}" ry="${DY*.9}" fill="rgba(0,0,0,.28)"/>`;
+  if(v===4)b+=`<circle cx="${(t00[0]+t11[0])/2}" cy="${t00[1]}" r="14" fill="url(#Aglow)" opacity=".5"/>`;
+  b+=`<polygon points="${p00} ${p01} ${t01} ${t00}" fill="url(#Al${v})"/>`;
+  b+=`<polygon points="${p01} ${p11} ${t11} ${t01}" fill="url(#Af${v})"/>`;
+  b+=`<polygon points="${t00} ${t10} ${t11} ${t01}" fill="url(#At${v})"/>`;
+  b+=`<polyline points="${t01} ${t00} ${t10}" fill="none" stroke="rgba(255,236,214,.22)" stroke-width=".7"/>`;
+  items.push([p01[1],b])}
+ items.sort((a,b)=>a[0]-b[0]);
+ document.getElementById('pA').innerHTML=s+items.map(i=>i[1]).join('');
+})();
+
+/* ② 体素柱阵 */
+(()=>{const {d}=mk();const COLS=53,ROWS=7,BH=8.4,WX=10.6,WY=-2.35,DX=6.2,DY=4.05,OX=14,OY=205,IN=.24;
+ const P=(x,y)=>[OX+x*WX+y*DX,OY+x*WY+y*DY];
+ let s=defs('B');
+ const g0=P(-.2,-.2),g1=P(COLS+.2,-.2),g2=P(COLS+.2,ROWS+.2),g3=P(-.2,ROWS+.2);
+ s+=`<polygon points="${g0} ${g1} ${g2} ${g3}" fill="url(#Bfloor)" stroke="rgba(240,228,216,.06)"/>`;
+ for(let x=0;x<=COLS;x+=2){const a=P(x,0),b=P(x,ROWS);
+  s+=`<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="rgba(240,228,216,.028)"/>`}
+ for(let y=0;y<=ROWS;y++){const a=P(0,y),b=P(COLS,y);
+  s+=`<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="rgba(240,228,216,.028)"/>`}
+ const items=[];
+ for(let x=0;x<COLS;x++)for(let y=0;y<ROWS;y++){const v=d[x][y];if(!v)continue;
+  const h=v*BH+3;
+  const p00=P(x+IN,y+IN),p10=P(x+1-IN,y+IN),p11=P(x+1-IN,y+1-IN),p01=P(x+IN,y+1-IN);
+  const L=p=>[p[0],p[1]-h],t00=L(p00),t10=L(p10),t11=L(p11),t01=L(p01);
+  let b='';
+  b+=`<ellipse cx="${(p00[0]+p11[0])/2}" cy="${(p00[1]+p11[1])/2+1}" rx="${WX*.72}" ry="${DY*.72}" fill="rgba(0,0,0,.3)"/>`;
+  if(v===4)b+=`<circle cx="${(t00[0]+t11[0])/2}" cy="${t00[1]}" r="12" fill="url(#Bglow)" opacity=".55"/>`;
+  b+=`<polygon points="${p00} ${p01} ${t01} ${t00}" fill="url(#Bl${v})"/>`;
+  b+=`<polygon points="${p01} ${p11} ${t11} ${t01}" fill="url(#Bf${v})"/>`;
+  b+=`<polygon points="${t00} ${t10} ${t11} ${t01}" fill="url(#Bt${v})"/>`;
+  const c=(a,b)=>[(a[0]+b[0])/2,(a[1]+b[1])/2];
+  const m1=c(t00,c(t00,t11)),m2=c(t10,c(t10,t01)),m3=c(t11,c(t11,t00)),m4=c(t01,c(t01,t10));
+  b+=`<polygon points="${m1} ${m2} ${m3} ${m4}" fill="rgba(255,238,216,.10)"/>`;
+  b+=`<polyline points="${t01} ${t00} ${t10}" fill="none" stroke="rgba(255,236,214,.25)" stroke-width=".7"/>`;
+  items.push([p01[1],b])}
+ items.sort((a,b)=>a[0]-b[0]);
+ document.getElementById('pB').innerHTML=s+items.map(i=>i[1]).join('');
+})();
+
+/* ③ 绸面山脊 */
+(()=>{const {d}=mk();const COLS=53;
+ let s='<defs>';
+ for(let y=0;y<7;y++){const a=[.55,.48,.42,.36,.30,.22,.17][y];
+  s+=`<linearGradient id="Cr${y}" x1="0" y1="0" x2="0" y2="1">
+   <stop offset="0" stop-color="#E8A360" stop-opacity="${a}"/>
+   <stop offset="1" stop-color="#E8A360" stop-opacity="0"/></linearGradient>`}
+ s+=`<radialGradient id="Cglow"><stop offset="0" stop-color="#FFC078" stop-opacity=".9"/>
+  <stop offset="1" stop-color="#FFC078" stop-opacity="0"/></radialGradient></defs>`;
+ const W=600,X0=24,DXr=4.2,DYr=15.5,SC=9.5;
+ /* 每行做 3 点滑动平均，再用 Catmull-Rom→Bezier 平滑 */
+ const smooth=arr=>arr.map((v,i)=>{
+   const a=arr[Math.max(0,i-1)],b=arr[Math.min(arr.length-1,i+1)];
+   return (a+v*2+b)/4});
+ let out='',glows='';
+ for(let y=6;y>=0;y--){
+  const bx=X0+(6-y)*DXr, by=52+y*DYr+90;
+  const hs=smooth(smooth(d.map(c=>c[y]*SC)));
+  const px=i=>bx+i*(W-40)/(COLS-1);
+  let path=`M${px(0)},${by-hs[0]}`;
+  for(let i=0;i<COLS-1;i++){
+   const x0=px(Math.max(0,i-1)),y0=by-hs[Math.max(0,i-1)];
+   const x1=px(i),y1=by-hs[i],x2=px(i+1),y2=by-hs[i+1];
+   const x3=px(Math.min(COLS-1,i+2)),y3=by-hs[Math.min(COLS-1,i+2)];
+   const c1x=x1+(x2-x0)/6,c1y=y1+(y2-y0)/6,c2x=x2-(x3-x1)/6,c2y=y2-(y3-y1)/6;
+   path+=` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)}`}
+  out+=`<path d="${path} L${px(COLS-1)},${by} L${px(0)},${by} Z" fill="url(#Cr${y})"
+    stroke="#F2A452" stroke-opacity="${(.8-y*.09).toFixed(2)}" stroke-width="${y<2?1.3:1}"/>`;
+  const raw=d.map(c=>c[y]);
+  for(let x=0;x<COLS;x++)if(raw[x]===4)
+   glows+=`<circle cx="${px(x)}" cy="${by-hs[x]}" r="8" fill="url(#Cglow)" opacity=".55"/>`}
+ document.getElementById('pC').innerHTML=s+out+glows+
+  `<line x1="18" y1="238" x2="642" y2="238" stroke="rgba(240,228,216,.08)"/>`;
+})();
+
+/* ④ 浮雕热力 */
+(()=>{const {d}=mk();
+ let s=`<defs>`;
+ for(let v=1;v<5;v++)s+=`<linearGradient id="Dt${v}" x1="0" y1="0" x2="1" y2="1">
+  <stop offset="0" stop-color="${LT[v]}"/><stop offset="1" stop-color="${TOP[v]}"/></linearGradient>`;
+ s+=`</defs>`;
+ const CS=9.2,GAP=2.4,OX=36,OY=30;
+ s+=`<rect x="${OX-10}" y="${OY-10}" width="${53*(CS+GAP)+16}" height="${7*(CS+GAP)+16}" rx="10" fill="#0C0A08"/>`;
+ for(let x=0;x<53;x++)for(let y=0;y<7;y++){const v=d[x][y];
+  const px=OX+x*(CS+GAP),py=OY+y*(CS+GAP);
+  if(!v){s+=`<rect x="${px}" y="${py}" width="${CS}" height="${CS}" rx="2.4" fill="#141110"/>`;continue}
+  const lift=v*1.15;
+  s+=`<rect x="${px+lift*.7}" y="${py+lift}" width="${CS}" height="${CS}" rx="2.6" fill="rgba(0,0,0,.4)"/>`;
+  s+=`<rect x="${px}" y="${py-lift*.4}" width="${CS}" height="${CS}" rx="2.6" fill="url(#Dt${v})"/>`;
+  s+=`<path d="M${px+1.4},${py-lift*.4+CS-1.6} L${px+1.4},${py-lift*.4+1.8} Q${px+1.4},${py-lift*.4+1.4} ${px+2},${py-lift*.4+1.4} L${px+CS-1.6},${py-lift*.4+1.4}" fill="none" stroke="rgba(255,240,220,${.12+v*.07})" stroke-width="1" stroke-linecap="round"/>`;
+  if(v===4)s+=`<rect x="${px-1.5}" y="${py-lift*.4-1.5}" width="${CS+3}" height="${CS+3}" rx="3.4" fill="none" stroke="#F2A452" stroke-opacity=".4"/>`}
+ ["8月","11月","2月","5月","8月"].forEach((m,i)=>{
+  s+=`<text x="${OX+i*13*(CS+GAP)}" y="${OY+7*(CS+GAP)+16}" fill="#736D66" font-size="9.5" font-family="monospace">${m}</text>`});
+ document.getElementById('pD').innerHTML=s;
+})();
+</script>
