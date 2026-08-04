@@ -42,6 +42,17 @@ CREATE TABLE schema_migrations (
 ) STRICT;
 
 -- ============================================================
+-- meta：单行表。职责：data_version——已提交写入的代次
+-- （ADR-0019）。每次写事务提交时同事务 +1；查询 DTO 携带它，
+-- 变更事件携带它，客户端据此判断新鲜度与漏事件。
+-- 与 schema_version（结构版本，进程协商用）正交。
+-- ============================================================
+CREATE TABLE meta (
+  id           INTEGER PRIMARY KEY CHECK (id = 1),   -- 单行守卫
+  data_version INTEGER NOT NULL DEFAULT 0
+) STRICT;
+
+-- ============================================================
 -- source_instances：源实例。职责：把 源类型 × 账号 × 机器 ×
 -- 源数据根 映射为稳定实例 ID——事件身份 (source_instance_id,
 -- event_key) 的一半；跨实例同 eventKey 不互相去重。
@@ -501,4 +512,5 @@ CREATE INDEX idx_rollup_source_day ON daily_usage_rollups (source_instance_id, d
 | `sessions` 汇总无法表达部分口径 | native/computed 只有部分事件有值时，汇总被当完整账目读 | 增 `has_partial_cost` |
 | `source` 封闭枚举 CHECK | 源集合是开放的（持续扩增），每加源一次迁移；封闭枚举在 core 违反源无关边界 | 格式约束替代枚举（ADR-0018） |
 | 聚合层无 `agent` 维度 | 事件清理后"按智能体 × 模型"的历史统计永久不可得 | 两张聚合表增 agent 入主键（ADR-0018） |
+| 无数据版本锚点（2026-08-04 关闭） | SSE 只发心跳、DTO 零版本：断线漏事件永久丢失、复合视图可跨两次提交自相矛盾、陈旧态无法与新鲜区分 | 增 `meta.data_version`，写事务同事务递增（ADR-0019） |
 | 窄表 WITHOUT ROWID 待实测（2026-08-04 关闭） | — | spike ① 实测：tool_calls 插入 1.6× / 查询 27% → tool_calls + 孪生 event_charges 采纳；cache_size 实测不可区分 → 维持（数据门签核 ①） |
