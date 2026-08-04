@@ -194,3 +194,34 @@ Cursor 两案的数值、分池、归属与覆盖均正确；失败只在 source
 4. 修复后重跑本报告「验收命令」全套，并对改动后的 golden 做新上下文复推。
 
 在以上三组问题关闭前，数据门不得签核。
+
+## 全分支复审
+
+不通过（1 组必须修复：事故恢复后的文档与代码分歧，按最高级事故纪律停止复审）
+
+- 日期：2026-08-04
+- 对象：`feat/freeze-closure@2259ae5`，四笔提交顺序 `1e2652c → cfa53da → 0d60f24 → 2259ae5`；公开分支与 `origin/feat/freeze-closure` 同步且工作树干净；本复审未切换或修改 `main`。
+- 恢复说明：本文件曾随 `internal/` 事故丢失；本节追加前，先从事故前会话 JSONL 中实际执行的 `Add File` 与后续 `Update File` 补丁逐行恢复上一版复审正文（196 行），没有按摘要改写旧结论。
+
+### 必须修复：Claude source spec 自相矛盾，且实现与白名单条款冲突
+
+**证据链**：
+
+1. `internal/docs/sources/claude-code.md:24` 的白名单原则是绝对表述：只消费 `type == "assistant"` 且 `message.usage` 为对象的事件，**其余全部跳过**。
+2. 同一 source spec 的 `:139` 又规定：`type == "assistant"` 且 usage 存在但不是对象时，事件须按可解析部分入库为 `excluded / unverified-schema` 并记 `ingest_errors`。对 `msg_J` 的 `usage: 7`，两条分别要求“不产生事件”和“产生 excluded 事件”，不能同时满足。
+3. 当前实现选择第二条：`crates/tokly-adapter-claude/src/lib.rs:383-414` 对非对象 usage 构造零 token、四维 `tokenCoverage` 的 excluded 事件并返回 `EventWithError`；`tests/scan.rs:381-408` 明确断言 `msg_J` 入库且 `rawUsage = "7"`，insta 快照也冻结该事件。
+4. `internal/docs/adr/0014-诊断与格式演进.md:18` 支持“按可解析部分入库”，但不能由复审者据此静默废除 source spec `:24`；项目红线明确 adapter 以 source spec 为施工权威，且发现文档与实现矛盾须停下上报而非择一。
+
+**裁决**：实现与 `:139`、ADR-0014、测试一致，但与 `:24` 矛盾；这不授权复审者自行选定哪侧为准。这是红线违例，属于本轮允许列为“必须修复”的范围。维护者须先把 `claude-code.md:24` 与 `:139` 收敛成唯一处置，并让实现、测试和快照服从该单值契约；本复审不代改，不以现有测试绿色替代裁决。无工具跨模型对抗复核独立确认只有此项触发停审纪律。
+
+### 事故恢复后的陈旧规范措辞（非阻塞）
+
+- `internal/docs/数据库-schema.md:481` 仍以未来态要求 `tool_calls`、`event_charges`、`session_model_stats`、`watermarks` 四张窄表在 M0.5 spike ① 一并实测；同文后续闭环表 `:504`、`internal/docs/reports/阶段三B-裁决.md:9` 与冻结收口报告已明确只实测并采纳前两表，后两表“未实测不动”。按后文显式闭环可以唯一消解，不构成第二条红线；`:481` 是事故恢复后未清除的陈旧待办措辞。
+- SQL 本体的静态核对未发现三方漂移：schema 与 `migration.rs:169-240` 都只有 `tool_calls`、`event_charges` 为 `STRICT, WITHOUT ROWID`，`session_model_stats`、`watermarks` 仍为 `STRICT`；`ddl_consistency.rs:116-154` 会逐对象比较完整 `sqlite_schema`。但因最高级事故已先触发，本轮没有继续执行 DDL 文档门，不能把静态核对冒充“真实执行通过”。
+- `internal/docs/adr/0002-数据架构.md:125` 的“observation 永久保留”虽与现行 90 天保留相反，但同文 `:133` 明确称其为旧无条件表述并收窄为仅因保留期清理；按 ADR 只追加纪律可确定后文取代前文，因此本次不另列阻塞。
+
+### 停审边界与未完成项
+
+- 触发事故后立即停止，未执行三个 harness 突变、全分支数值复推、UNRESOLVED 反向抽查、fmt/clippy/nextest/deny/xtask ci、DDL 两项真实执行及最终卫生签核；旧章节记录的是上一轮 `cfa53da/0d60f24` 的历史证据，不代表本轮 `2259ae5` 已验收。
+- 停审前只完成了分支/提交序列、事故前报告恢复、二轮裁决入口及上述文档与实现证据的只读核对。没有修改公开代码、fixtures、source spec、schema 或裁决文档；没有小问题代修。
+- 文档冲突收敛后，须从本任务步骤 0 重新开始，完整跑三次 mask 突变、三源各两案逐字段手推、UNRESOLVED 核验、DDL 两项真实执行、全套门禁与卫生检查，再给数据门三档终局结论。
