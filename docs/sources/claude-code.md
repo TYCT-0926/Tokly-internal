@@ -115,11 +115,11 @@
 
 ## 增量摄取策略
 
-水位线按 ADR-0002（JSONL 类）：`watermarks` 行 = `(sourceInstanceId, 'default', 相对路径, 'jsonl-offset')` + 字节偏移 + mtime + 文件大小。
+水位线按 ADR-0002（JSONL 类）：`watermarks` 行 = `(sourceInstanceId, 'default', 相对路径, 'jsonl-offset')` + 字节偏移 + 稳定 `file_id` + 独立 `change_stamp`（mtime 等）+ 文件头指纹。`file_id` 用于一般身份断裂判定；`change_stamp` 用于未变化文件的免打开快路径，并仅在游标已位于同一 EOF 时辅助识别原位同长改写。禁止把二者压成同一值，否则普通 append 与同长替换无法同时正确识别。
 
-1. JSONL 纯追加 → **按字节偏移续读**。比对 mtime/大小，未变则跳过整个文件。
+1. JSONL 纯追加 → **按字节偏移续读**。比对 mtime/大小，未变则跳过整个文件；每轮读取严格止于该轮首次取到的文件大小，扫描过程中新增字节留到下轮，position 与该大小对应的 change stamp 同事务推进。
 2. **行尾残缺处理**：追加写可能留下半行。每轮只消费到最后一个完整 `\n` 为止，JSON parse 失败的尾部字节不推进水位线，留给下一轮；**完整但非法的行**记 `ingest_errors`（错误码/hash/长度/位置）后推进水位线（ADR-0002）。
-3. **截断/替换检测**：文件大小 < 水位线偏移，或文件被整体重写 → 该流 `generation++` 全量重读。幂等性由 `(sourceInstanceId, eventKey)` 主键保证，重读不产生重复。
+3. **截断/替换检测**：文件大小 < 水位线偏移、稳定 `file_id` 变化、文件头指纹变化，或**游标已在 EOF 且大小未增长、但 `change_stamp` 变化** → 该流 `generation++` 全量重读。Windows 的稳定身份取同一打开句柄的 volume serial + file index（不取会受 NTFS tunneling 影响的创建时间）；原位同长尾改写由 EOF + change stamp 分支兜底。普通 append 的大小增长只改变 `change_stamp`，不得误增代。幂等性由 `(sourceInstanceId, eventKey)` 主键保证，重读不产生重复。
 4. **文件删除**：Claude Code 启动时按 `cleanupPeriodDays`（默认 30 天）删除旧 jsonl——本机实测最老文件恰好 30 天。adapter 发现文件消失时静默丢弃水位线，已入库数据不受影响（这正是 Tokly 本地仓库的价值；**缺席 ≠ 删除**，不标 tombstone）。
 5. **无差分需求**：`usage` 是单次 API 调用的瞬时值，非累计计数器，无需相邻事件差分。
 6. 扫描范围（二轮审查 §2 明写）：`projects/*/*.jsonl` 及 `projects/*/*/subagents/*.jsonl` 两层通配；`*.meta.json` 只读——其 `agentType` 字段用于 agent 归一化（见「agent 归一化规则」节），其余字段仅供会话标题/类型展示，不进用量管线。

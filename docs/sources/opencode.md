@@ -113,7 +113,7 @@ event / event_sequence          -- 事件溯源新机制，本机 0 行，暂不
 操作语义（二轮审查 §2：SQLite 活库类——**轮内严格分页**与**跨轮 checkpoint 回退**是两种机制，分开实现、禁止混用）：
 
 1. **单只读事务快照 + 轮内严格分页**：每轮打开**一个**只读事务（`mode=ro` + `busy_timeout`），在其一致快照内按 `SELECT id, session_id, time_created, time_updated, data FROM message WHERE (time_updated > :t) OR (time_updated = :t AND id > :id) ORDER BY time_updated, id LIMIT :page` 严格向前分页；轮内 cursor **不回退**。
-2. **pending_messages 状态机（中断轮次的真实修法，替代旧"过滤后继续推进水位线"）**：只取 `data.role='assistant'` 者——`data.finish` 非空 → 定稿入库；`data.error` 非空 → 定稿入库（**error 但已有 token 的轮次照常计数**）；**15 分钟**无更新 → 陈旧定稿入库；其余按 `message.id` 登记 `pending_messages` 表，**每轮先按 id 重读**这些未决消息。**水位线不得越过任何 pending id**——过滤未定稿行后照样推进水位线 = 永久丢轮次（旧方案被二轮证伪）。定稿事件落库后即从 `pending_messages` 删除。
+2. **pending_messages 状态机（中断轮次的真实修法，替代旧"过滤后继续推进水位线"）**：只取 `data.role='assistant'` 者——`data.finish` 非空 → 定稿入库；`data.error` 非空 → 定稿入库（**error 但已有 token 的轮次照常计数**）；**15 分钟**无更新 → 陈旧定稿入库；其余按 `message.id` 登记 `pending_messages` 表，持久化其 SQLite position 与最后一次归一化 UsageEvent（只含用量字段与元数据，禁止对话内容），**每轮先按 id 重读**这些未决消息。若按 id 重读时源行已消失，立即从持久 payload 陈旧定稿并记 `pending-vanished`；不得因源行缺席丢掉已观测 token。**水位线不得越过任何 pending id**——过滤未定稿行后照样推进水位线 = 永久丢轮次（旧方案被二轮证伪）。定稿事件落库后即从 `pending_messages` 删除。
 3. 定稿事件以 `message.id` upsert（同 id 覆盖，天然幂等）；水位线推进到本轮已提交事件的最大 `(time_updated, id)`，与事件写入同一事务（ADR-0002 事务边界）。
 4. **跨轮 checkpoint ≠ 轮内 cursor**：跨轮用 safety horizon（checkpoint 回退 2s 重叠扫描，重复行由 upsert 吸收）+ **周期全量 reconciliation**（对账窗口内全量重扫）兜底。
 5. part 表同理按 `(time_updated, id)` 增量，仅在需要 toolCall 明细时拉取。

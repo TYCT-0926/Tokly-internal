@@ -145,7 +145,7 @@ Copilot 两通道的 **cache write 与 input 的互斥性、reasoning 与 output
 
 - **OTEL / events.jsonl**：水位线 = `(文件路径, 字节偏移)`（JSONL 类，ADR-0002），按 mtime 排序扫描目录。`COPILOT_OTEL_FILE_EXPORTER_PATH` 常见按时间戳一会话一文件，目录扫描须能发现新文件；文件大小回缩或 inode 变化视为轮转/截断，`generation++` 重扫（去重键幂等兜底）。
 - **session-state 特殊处理**：`session.shutdown` 是**累计快照**，不可把多条 shutdown 的 token 数相加。只取每个 `(sessionId, model)` 的最后一条 shutdown 值（去重键天然幂等：重扫同文件重复 upsert 同键）。未 shutdown 的进行中会话只有 OTEL 可见（若开启）。
-- **API（C/D 通道）：staging 整周期事务发布（二轮审查 §2）**：每个周期（月/日）先全量拉取写入 **staging**（全部 usageItems / NDJSON 行）；该周期全部页（C 的分页参数组合、D 的 download_links 全部文件）成功后**单事务 reconcile 发布**进 `usage_events`；**任何一页失败 → 整个周期不发布**，保留上一周期 projection，下轮重试。**近期周期滚动重拉**（当月 + 上一月；企业报告最近 3 天，覆盖 T+1 延迟），历史周期拉成功后封存。
+- **API（C/D 通道）：staging 整周期事务发布（二轮审查 §2）**：每个周期（月/日）先全量拉取写入 **staging**（全部 usageItems / NDJSON 行）；页序从 0 连续，且 adapter 收到 provider 的终页/完整下载集合后显式封口，才可把该周期全部页（C 的分页参数组合、D 的 download_links 全部文件）以**单事务 reconcile 发布**进 `usage_events`；**任何一页失败、缺页或未封口的成功前缀 → 整个周期不发布**，保留上一周期 projection，下轮重试。**近期周期滚动重拉**（当月 + 上一月；企业报告最近 3 天，覆盖 T+1 延迟），历史周期拉成功后封存。
 - **累计值差分**：仅企业报告的 `token_usage.*_sum` 是日粒度快照值，直接当当日增量用，无需差分。
 
 ## 去重与已知坑

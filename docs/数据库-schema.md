@@ -308,6 +308,12 @@ CREATE TABLE pending_messages (
   last_payload_hash TEXT,
   state       TEXT NOT NULL DEFAULT 'open'
               CHECK (state IN ('open','finalized','errored','stale')),
+  origin_stream TEXT,                     -- v3 升级前遗留行可 NULL；新写入六列成组非空
+  stream_generation INTEGER,
+  source_position TEXT,                   -- SQLite position 的 canonical 编码
+  normalizer_version INTEGER,
+  observed_at INTEGER,
+  normalized_payload TEXT,                -- UsageEvent JSON；只含指标与元数据，禁止对话内容
   PRIMARY KEY (source_instance_id, pending_key)
 ) STRICT;
 
@@ -348,9 +354,10 @@ CREATE TABLE watermarks (
   cursor_version INTEGER NOT NULL DEFAULT 1,   -- 游标格式版本，演进时 ++
   generation   INTEGER NOT NULL DEFAULT 0,     -- 流身份代际，断裂 ++
   position     TEXT,                      -- 游标本体（kind 解释）；NULL = 尚未读过
-  file_id      TEXT,                      -- 文件身份（inode/创建时间等；库文件为 NULL）
+  file_id      TEXT,                      -- 稳定文件身份（Unix dev+inode / Windows volume+file index；库文件为 NULL）
   header_hash  TEXT,                      -- 流头指纹（首行/首页采样哈希）
   updated_at   INTEGER NOT NULL,
+  change_stamp TEXT,                      -- v3；与 position 原子推进；同长原位改写在 EOF 辅助断代
   PRIMARY KEY (source_instance_id, channel, stream_key, kind)
 ) STRICT;
 
