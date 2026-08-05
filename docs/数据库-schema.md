@@ -239,6 +239,23 @@ CREATE TABLE session_tail_ledger (
 ) STRICT;
 
 -- ============================================================
+-- source_reclaim_watermarks：回收后重读的防护水位，**永久层**
+-- （ADR-0002 定案 7）。
+-- 职责：记录本库已回收（删除）且此前已永久计入（冻结汇总或尾账）的
+-- 事件中最新的一个源时间戳。摄取/重建四入口据此判定：投影行不存在
+-- 且候选事件时间 <= 水位 ⇒ 零触碰，并记 reclaimed-key-reobserved。
+-- 有界性：行数 = 源实例数，与事件量无关（ADR-0011 永久层年增预算）；
+-- 为每个曾存在的事件保留标识是被明令禁止的形态。
+-- 代价：水位之下到达的「迟到真新事件」同样被判为重读而不计入——
+-- 不可区分时取不二次计入，缺口由证据码可见。
+-- ============================================================
+CREATE TABLE source_reclaim_watermarks (
+  source_instance_id   TEXT PRIMARY KEY REFERENCES source_instances(id),
+  reclaimed_through_ms INTEGER NOT NULL,   -- 已回收事件的最大源时间戳
+  updated_at           INTEGER NOT NULL
+) STRICT;
+
+-- ============================================================
 CREATE TABLE sessions (
   source_instance_id TEXT NOT NULL REFERENCES source_instances(id),
   session_key        TEXT NOT NULL,
