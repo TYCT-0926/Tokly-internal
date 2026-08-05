@@ -166,6 +166,11 @@ CREATE TABLE usage_events (
                              'native-only','computed-only','estimate-only')),
   raw_usage               TEXT,           -- 仅有损映射时存
   raw_schema              TEXT,           -- 源格式版本标识
+  frozen_baseline_at      INTEGER,        -- v4（ADR-0002 定案 6）；非空 = 本事件在所属会话
+                                          -- 冻结时已计入其汇总。判据是 fold 到达早于冻结，
+                                          -- 非源时间戳——迟到的旧事件是新到达，属尾侧。
+                                          -- 基线事件全列恒不可变（含 computed 三列），
+                                          -- 一切入口跳过；列尾位置随 ALTER 的追加语义
   PRIMARY KEY (source_instance_id, event_key),
   CHECK (granularity = 'event' OR period_end IS NOT NULL),
   CHECK (cost_native_micro_usd IS NULL OR native_cost_kind IS NOT NULL),
@@ -205,6 +210,34 @@ CREATE TABLE conflict_observations (
 -- 投影窗口内可由 usage_events 重建；窗口外 frozen_at 置位后
 -- 定格，不再重建（ADR-0011）。
 -- 空会话删除规则：重算后 counted 事件为 0 即 DELETE。
+-- ============================================================
+-- session_tail_ledger：冻结会话的尾账，**永久层**（ADR-0002 定案 6）。
+-- 职责：冻结之后到达、其后又随保留期过期的事件的累加账。
+-- compact 独占：只在删除过期尾侧事件的同一事务内累加，exactly-once
+-- 由删除触发保证；只累加不重算（尾侧存活事件仍在窗口内时不预吸收）。
+-- 报表第四腿 = 本表 + 存活尾侧事件。
+-- 成本按「金额 + 有值事件数」两列表达：只累加金额会把「无成本」与
+-- 「成本为零」混为一谈，部分口径（has_partial_cost）也就无从还原。
+-- ============================================================
+CREATE TABLE session_tail_ledger (
+  source_instance_id TEXT NOT NULL REFERENCES source_instances(id),
+  session_key        TEXT NOT NULL,
+  event_count        INTEGER NOT NULL DEFAULT 0,
+  tokens_input           INTEGER NOT NULL DEFAULT 0,
+  tokens_output          INTEGER NOT NULL DEFAULT 0,
+  tokens_cache_read      INTEGER NOT NULL DEFAULT 0,
+  tokens_cache_write_5m  INTEGER NOT NULL DEFAULT 0,
+  tokens_cache_write_1h  INTEGER NOT NULL DEFAULT 0,
+  tokens_reasoning       INTEGER NOT NULL DEFAULT 0,
+  cost_native_micro_usd   INTEGER NOT NULL DEFAULT 0,
+  cost_computed_micro_usd INTEGER NOT NULL DEFAULT 0,
+  native_cost_events      INTEGER NOT NULL DEFAULT 0,   -- 其中 native 成本非空的事件数
+  computed_cost_events    INTEGER NOT NULL DEFAULT 0,   -- 其中 computed 成本非空的事件数
+  estimated_events        INTEGER NOT NULL DEFAULT 0,
+  updated_at         INTEGER NOT NULL,
+  PRIMARY KEY (source_instance_id, session_key)
+) STRICT;
+
 -- ============================================================
 CREATE TABLE sessions (
   source_instance_id TEXT NOT NULL REFERENCES source_instances(id),
