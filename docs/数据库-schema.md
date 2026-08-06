@@ -239,20 +239,45 @@ CREATE TABLE session_tail_ledger (
 ) STRICT;
 
 -- ============================================================
--- source_reclaim_watermarks：回收后重读的防护水位，**永久层**
--- （ADR-0002 定案 7）。
--- 职责：记录本库已回收（删除）且此前已永久计入（冻结汇总或尾账）的
--- 事件中最新的一个源时间戳。摄取/重建四入口据此判定：投影行不存在
--- 且候选事件时间 <= 水位 ⇒ 零触碰，并记 reclaimed-key-reobserved。
--- 有界性：行数 = 源实例数，与事件量无关（ADR-0011 永久层年增预算）；
--- 为每个曾存在的事件保留标识是被明令禁止的形态。
--- 代价：水位之下到达的「迟到真新事件」同样被判为重读而不计入——
--- 不可区分时取不二次计入，缺口由证据码可见。
+-- reclaimed_event_identities：回收后重读的防护判别器，**永久层**
+-- （ADR-0002 定案 7；三轮复审撤回时间水位形态后的替代）。
+-- 判据 = 事件身份 (source_instance_id, event_key)，不是任何派生量：
+-- usage_observations 按各行自己的 event_timestamp 剪枝，剪枝会移动
+-- fold 胜者与其时间戳，故一切「可随观测集合剪枝而移动的量」都不可用；
+-- 事件身份是唯一的剪枝不变量。
+-- 职责：compact 删除过期投影的同一事务内，把被删的 counted 行的身份
+-- 记入本表（含 session_key IS NULL 的事件——它们不进会话汇总，但其
+-- 日聚合键同样被本轮定格，属永久计入）。摄取/重建四入口据此判定：
+-- 投影行不存在且本表答「有」⇒ 零触碰，并记 reclaimed-key-reobserved。
+-- 形态：每源实例 64 个分片，每分片一条可伸缩 Bloom 链（Almeida 等）。
+--   分片 = SHA-256("tokly/reclaimed-event-identity/v1"|inst|key) 首 4 字节
+--     mod 64；同一摘要另出两个 64 位字供双散列取位。
+--   第 i 片容量 64<<i、散列数 16+i，故其假阳性率 2^-(16+i)，
+--     整链上界 Σ = 2^-15 ≈ 3.1e-5。
+--   查询读该分片全部片，任一片答「有」即「有」——位只置不清、片只增
+--     不删，因此**不存在假阴性**（绝不双计）。
+-- 误差方向：假阳性（真新事件被判为重读）允许，属少计，且必留
+--   reclaimed-key-reobserved 证据（定案 7「不可区分时取不二次计入、
+--   少计可见」）。
+-- 有界性（ADR-0011 永久层预算对账）：链满时约 3.5 字节/身份，最末片未
+--   满时最差约 7 字节/身份；六源重度 ~300 万事件/年 → 约 11-21 MB/年，
+--   与日聚合+会话汇总的 ~10 MB/年同处 <50 MB/年 的年增预算内。
+--   空库地板 = 每源实例 64×185 字节 ≈ 12 KB。逐事件墓碑（约 150
+--   字节/行）是被明令禁止的形态。
+-- 稳定性红线：分片数与摘要函数**永不可改**——改了等于旧身份查不到，
+--   即制造假阴性。每行自带 hash_count 与位宽，故几何参数可随新片演进
+--   而不影响既有片。
 -- ============================================================
-CREATE TABLE source_reclaim_watermarks (
-  source_instance_id   TEXT PRIMARY KEY REFERENCES source_instances(id),
-  reclaimed_through_ms INTEGER NOT NULL,   -- 已回收事件的最大源时间戳
-  updated_at           INTEGER NOT NULL
+CREATE TABLE reclaimed_event_identities (
+  source_instance_id TEXT NOT NULL REFERENCES source_instances(id),
+  shard              INTEGER NOT NULL,      -- 摘要 mod 64
+  slice_index        INTEGER NOT NULL,      -- 链内序号，0 起
+  capacity           INTEGER NOT NULL CHECK (capacity > 0),    -- 该片容量 64<<i
+  hash_count         INTEGER NOT NULL CHECK (hash_count > 0),  -- 该片散列数 16+i
+  inserted_count     INTEGER NOT NULL DEFAULT 0,               -- 已写入身份数
+  bits               BLOB NOT NULL,         -- 位图；位宽 = length(bits)*8
+  updated_at         INTEGER NOT NULL,
+  PRIMARY KEY (source_instance_id, shard, slice_index)
 ) STRICT;
 
 -- ============================================================
